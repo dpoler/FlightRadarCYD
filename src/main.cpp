@@ -94,7 +94,8 @@ static void showStatus(const char *msg) {
 // Choose aircraft colour based on altitude / on_ground
 static uint16_t acColor(const FlightData &f) {
   if (f.on_ground) return COL_AC_GND;
-  if (!isnan(f.alt_m) && f.alt_m <= 3048.0f) return COL_AC_LOW; // ≤ 10 000 ft
+  float threshold_m = 3048.0f + fc_elevation_ft * 0.3048f;  // 10 000 ft AGL
+  if (!isnan(f.alt_m) && f.alt_m <= threshold_m) return COL_AC_LOW;
   return COL_AC_HIGH;
 }
 

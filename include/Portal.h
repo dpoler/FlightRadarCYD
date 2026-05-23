@@ -16,6 +16,7 @@ static char fc_lat[16]        = "";
 static char fc_lon[16]        = "";
 static int  fc_radius_km      = 150;   // default scan radius, always stored in km
 static bool fc_use_miles      = false; // display distances in miles
+static int  fc_elevation_ft   = 0;     // location elevation in feet (MSL) for altitude coloring
 static char fc_client_id[80]     = ""; // optional OpenSky OAuth2 credentials
 static char fc_client_secret[64] = ""; // enables 30-second refresh
 static bool fc_hide_ground    = false; // filter out on-ground aircraft
@@ -41,6 +42,7 @@ static void fcLoadSettings() {
   fc_radius_km   = prefs.getInt("radius", 150);
   fc_use_miles   = prefs.getBool("miles", false);
   fc_hide_ground = prefs.getBool("hide_gnd", false);
+  fc_elevation_ft = prefs.getInt("elev_ft", 0);
   String client_id  = prefs.getString("client_id",  "");
   String client_sec = prefs.getString("client_sec",  "");
   prefs.end();
@@ -58,7 +60,7 @@ static void fcLoadSettings() {
 static void fcSaveSettings(const char *ssid, const char *pass,
                            const char *lat, const char *lon, int radius, bool use_miles,
                            const char *client_id, const char *client_sec,
-                           bool hide_ground) {
+                           bool hide_ground, int elevation_ft) {
   Preferences prefs;
   prefs.begin("flightcyd", false);
   prefs.putString("ssid",       ssid);
@@ -68,6 +70,7 @@ static void fcSaveSettings(const char *ssid, const char *pass,
   prefs.putInt   ("radius",     radius);
   prefs.putBool  ("miles",      use_miles);
   prefs.putBool  ("hide_gnd",   hide_ground);
+  prefs.putInt   ("elev_ft",    elevation_ft);
   prefs.putString("client_id",  client_id);
   prefs.putString("client_sec", client_sec);
   prefs.end();
@@ -81,6 +84,7 @@ static void fcSaveSettings(const char *ssid, const char *pass,
   fc_radius_km    = radius;
   fc_use_miles    = use_miles;
   fc_hide_ground  = hide_ground;
+  fc_elevation_ft = elevation_ft;
   fc_has_settings = true;
 }
 
@@ -181,6 +185,11 @@ static void fcHandleRoot() {
   html += String(fc_lon);
   html +=
     "' placeholder='e.g. -77.0352' maxlength='15'>"
+    "<label>Your Elevation (feet MSL):</label>"
+    "<input type='number' name='elevation' min='-1500' max='20000' value='";
+  html += String(fc_elevation_ft);
+  html +=
+    "' placeholder='e.g. 5430 for Denver, 0 for sea level'>"
     "<label>Distance Units:</label>"
     "<select name='units' id='units' onchange='swapRadii()'>"
     "<option value='km'";
@@ -292,7 +301,9 @@ static void fcHandleSave() {
   radius = constrain(radius, 20, 500);
   String client_id  = portalServer->hasArg("client_id")     ? portalServer->arg("client_id")     : "";
   String client_sec = portalServer->hasArg("client_secret") ? portalServer->arg("client_secret") : "";
-  bool   hide_ground = portalServer->hasArg("hide_ground");
+  bool   hide_ground   = portalServer->hasArg("hide_ground");
+  int    elevation_ft  = portalServer->hasArg("elevation") ? portalServer->arg("elevation").toInt() : 0;
+  elevation_ft = constrain(elevation_ft, -1500, 20000);
 
   if (ssid.length() == 0) {
     portalServer->send(400, "text/html",
@@ -304,7 +315,7 @@ static void fcHandleSave() {
   }
 
   fcSaveSettings(ssid.c_str(), pass.c_str(), lat.c_str(), lon.c_str(), radius, use_miles,
-                 client_id.c_str(), client_sec.c_str(), hide_ground);
+                 client_id.c_str(), client_sec.c_str(), hide_ground, elevation_ft);
 
   portalServer->send(200, "text/html",
     "<html><head><meta charset='UTF-8'>"
