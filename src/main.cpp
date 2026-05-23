@@ -361,11 +361,11 @@ static void drawDetail(int idx) {
   uint16_t col = acColor(f);
 
   // Overlay panel — bottom portion of content area
-  int py = CONTENT_Y + CONTENT_H - 76;
-  gfx->fillRect(0, py, 320, 76, 0x000A);  // near-black blue tint
+  int py = CONTENT_Y + CONTENT_H - 90;
+  gfx->fillRect(0, py, 320, 90, 0x000A);  // near-black blue tint
   gfx->drawFastHLine(0, py, 320, col);
 
-  char buf[56];
+  char buf[72];
   gfx->setTextColor(col);
   gfx->setTextSize(2);
   gfx->setCursor(4, py + 4);
@@ -409,9 +409,20 @@ static void drawDetail(int idx) {
            fc_compass(f.bearing), f.track, 176);
   gfx->print(buf);
 
+  // Route (typical — may not reflect today's actual flight)
+  if (f.origin_iata[0] != '\0' && f.dest_iata[0] != '\0') {
+    gfx->setTextColor(COL_DIM);
+    gfx->setCursor(4, py + 60);
+    if (f.origin_city[0] != '\0' && f.dest_city[0] != '\0')
+      snprintf(buf, sizeof(buf), "~%s>%s  %s>%s", f.origin_iata, f.dest_iata, f.origin_city, f.dest_city);
+    else
+      snprintf(buf, sizeof(buf), "~%s>%s", f.origin_iata, f.dest_iata);
+    gfx->print(buf);
+  }
+
   // Dismiss hint
   gfx->setTextColor(0x2104);
-  gfx->setCursor(4, py + 60);
+  gfx->setCursor(4, py + 74);
   gfx->print("tap again to dismiss");
 }
 
@@ -477,8 +488,12 @@ static void handleTouch(int tx, int ty) {
       drawFooter();
       if (fc_detail_idx >= 0) {
         drawDetail(fc_detail_idx);
-        if (adsbdbFetchType(fc_flights[fc_detail_idx]))
-          drawDetail(fc_detail_idx);  // redraw once type data arrives
+        bool updated = adsbdbFetchType(fc_flights[fc_detail_idx]);
+        if (updated) drawDetail(fc_detail_idx);
+        if (fc_show_route) {
+          updated = adsbdbFetchRoute(fc_flights[fc_detail_idx]);
+          if (updated) drawDetail(fc_detail_idx);
+        }
       }
     }
   }
