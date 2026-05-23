@@ -14,7 +14,10 @@ static char fc_wifi_ssid[64]  = "";
 static char fc_wifi_pass[64]  = "";
 static char fc_lat[16]        = "";
 static char fc_lon[16]        = "";
-static int  fc_radius_km      = 150;   // default scan radius
+static int  fc_radius_km      = 150;   // default scan radius, always stored in km
+static bool fc_use_miles      = false; // display distances in miles
+static char fc_client_id[80]     = ""; // optional OpenSky OAuth2 credentials
+static char fc_client_secret[64] = ""; // enables 30-second refresh
 static bool fc_has_settings   = false;
 
 // ---------------------------------------------------------------------------
@@ -35,32 +38,44 @@ static void fcLoadSettings() {
   String lat  = prefs.getString("lat",  "");
   String lon  = prefs.getString("lon",  "");
   fc_radius_km = prefs.getInt("radius", 150);
+  fc_use_miles = prefs.getBool("miles", false);
+  String client_id  = prefs.getString("client_id",  "");
+  String client_sec = prefs.getString("client_sec",  "");
   prefs.end();
 
-  fc_radius_km = constrain(fc_radius_km, 50, 500);
-  ssid.toCharArray(fc_wifi_ssid, sizeof(fc_wifi_ssid));
-  pass.toCharArray(fc_wifi_pass, sizeof(fc_wifi_pass));
-  lat.toCharArray(fc_lat, sizeof(fc_lat));
-  lon.toCharArray(fc_lon, sizeof(fc_lon));
+  fc_radius_km = constrain(fc_radius_km, 20, 500); // 20 km covers the 15 mi minimum
+  ssid.toCharArray(fc_wifi_ssid,    sizeof(fc_wifi_ssid));
+  pass.toCharArray(fc_wifi_pass,    sizeof(fc_wifi_pass));
+  lat.toCharArray(fc_lat,           sizeof(fc_lat));
+  lon.toCharArray(fc_lon,           sizeof(fc_lon));
+  client_id.toCharArray(fc_client_id,     sizeof(fc_client_id));
+  client_sec.toCharArray(fc_client_secret, sizeof(fc_client_secret));
   fc_has_settings = (ssid.length() > 0);
 }
 
 static void fcSaveSettings(const char *ssid, const char *pass,
-                           const char *lat, const char *lon, int radius) {
+                           const char *lat, const char *lon, int radius, bool use_miles,
+                           const char *client_id, const char *client_sec) {
   Preferences prefs;
   prefs.begin("flightcyd", false);
-  prefs.putString("ssid",   ssid);
-  prefs.putString("pass",   pass);
-  prefs.putString("lat",    lat);
-  prefs.putString("lon",    lon);
-  prefs.putInt   ("radius", radius);
+  prefs.putString("ssid",       ssid);
+  prefs.putString("pass",       pass);
+  prefs.putString("lat",        lat);
+  prefs.putString("lon",        lon);
+  prefs.putInt   ("radius",     radius);
+  prefs.putBool  ("miles",      use_miles);
+  prefs.putString("client_id",  client_id);
+  prefs.putString("client_sec", client_sec);
   prefs.end();
 
-  strncpy(fc_wifi_ssid, ssid, sizeof(fc_wifi_ssid) - 1);
-  strncpy(fc_wifi_pass, pass, sizeof(fc_wifi_pass) - 1);
-  strncpy(fc_lat, lat,  sizeof(fc_lat) - 1);
-  strncpy(fc_lon, lon,  sizeof(fc_lon) - 1);
+  strncpy(fc_wifi_ssid,    ssid,       sizeof(fc_wifi_ssid)     - 1);
+  strncpy(fc_wifi_pass,    pass,       sizeof(fc_wifi_pass)     - 1);
+  strncpy(fc_lat,          lat,        sizeof(fc_lat)           - 1);
+  strncpy(fc_lon,          lon,        sizeof(fc_lon)           - 1);
+  strncpy(fc_client_id,     client_id,  sizeof(fc_client_id)     - 1);
+  strncpy(fc_client_secret, client_sec, sizeof(fc_client_secret) - 1);
   fc_radius_km    = radius;
+  fc_use_miles    = use_miles;
   fc_has_settings = true;
 }
 
@@ -161,16 +176,84 @@ static void fcHandleRoot() {
   html += String(fc_lon);
   html +=
     "' placeholder='e.g. -77.0352' maxlength='15'>"
+    "<label>Distance Units:</label>"
+    "<select name='units' id='units' onchange='swapRadii()'>"
+    "<option value='km'";
+  if (!fc_use_miles) html += " selected";
+  html +=
+    ">Kilometers (km)</option>"
+    "<option value='miles'";
+  if (fc_use_miles) html += " selected";
+  html +=
+    ">Miles (mi)</option>"
+    "</select>"
     "<label>Scan Radius:</label>"
-    "<select name='radius'>";
-  int radii[] = { 50, 100, 150, 200, 300 };
-  for (int i = 0; i < 5; i++) {
-    html += "<option value='" + String(radii[i]) + "'";
-    if (radii[i] == fc_radius_km) html += " selected";
-    html += ">" + String(radii[i]) + " km</option>";
+    "<select name='radius' id='radius'>";
+  if (!fc_use_miles) {
+    int radii[] = { 25, 50, 100, 150, 200, 300 };
+    for (int i = 0; i < 6; i++) {
+      html += "<option value='" + String(radii[i]) + "'";
+      if (radii[i] == fc_radius_km) html += " selected";
+      html += ">" + String(radii[i]) + " km</option>";
+    }
+  } else {
+    int miRadii[] = { 15, 30, 60, 100, 125, 200 };
+    float currentMi = fc_radius_km * 0.621371f;
+    int closestIdx = 0;
+    float closestDiff = currentMi - miRadii[0];
+    if (closestDiff < 0) closestDiff = -closestDiff;
+    for (int i = 1; i < 6; i++) {
+      float diff = currentMi - miRadii[i];
+      if (diff < 0) diff = -diff;
+      if (diff < closestDiff) { closestDiff = diff; closestIdx = i; }
+    }
+    for (int i = 0; i < 6; i++) {
+      html += "<option value='" + String(miRadii[i]) + "'";
+      if (i == closestIdx) html += " selected";
+      html += ">" + String(miRadii[i]) + " mi</option>";
+    }
   }
   html +=
     "</select>"
+    "<script>"
+    "var kO='<option value=25>25 km</option><option value=50>50 km</option>"
+    "<option value=100>100 km</option><option value=150>150 km</option>"
+    "<option value=200>200 km</option><option value=300>300 km</option>';"
+    "var mO='<option value=15>15 mi</option><option value=30>30 mi</option>"
+    "<option value=60>60 mi</option><option value=100>100 mi</option>"
+    "<option value=125>125 mi</option><option value=200>200 mi</option>';"
+    "function swapRadii(){"
+    "document.getElementById('radius').innerHTML="
+    "document.getElementById('units').value==='miles'?mO:kO;}"
+    "</script>"
+    "<hr>"
+    "<p style='text-align:left;color:#88aacc;margin:0 0 8px'>"
+    "&#128274; OpenSky OAuth2 credentials (optional) — enables 30-second refresh"
+    " vs 4&nbsp;min anonymous. Paste your credentials.json or enter fields directly.</p>"
+    "<label>Paste credentials.json:</label>"
+    "<textarea id='cred_json' rows='3' oninput='parseCred()'"
+    " style='width:100%;box-sizing:border-box;background:#001122;color:#00ccff;"
+    "border:2px solid #0066aa;border-radius:6px;padding:10px;font-size:0.8em;"
+    "font-family:monospace;resize:vertical'"
+    " placeholder='{\"clientId\":\"...\",\"clientSecret\":\"...\"}'></textarea>"
+    "<label>Client ID:</label>"
+    "<input type='text' id='client_id' name='client_id' value='";
+  html += String(fc_client_id);
+  html +=
+    "' placeholder='Leave blank for anonymous access' maxlength='79'>"
+    "<label>Client Secret:</label>"
+    "<input type='password' id='client_secret' name='client_secret' value='";
+  html += String(fc_client_secret);
+  html +=
+    "' placeholder='Leave blank for anonymous access' maxlength='63'>"
+    "<script>"
+    "function parseCred(){"
+    "try{"
+    "var j=JSON.parse(document.getElementById('cred_json').value.trim());"
+    "if(j.clientId)document.getElementById('client_id').value=j.clientId;"
+    "if(j.clientSecret)document.getElementById('client_secret').value=j.clientSecret;"
+    "}catch(e){}}"
+    "</script>"
     "<br><button class='btn btn-save' type='submit'>&#128190; Save &amp; Connect</button>"
     "</form>";
   if (fc_has_settings) {
@@ -182,7 +265,7 @@ static void fcHandleRoot() {
   }
   html +=
     "<p class='note'>&#9888; ESP32 supports 2.4 GHz WiFi only. "
-    "OpenSky anonymous access: ~400 requests/day. Radar refreshes every 4 min.</p>"
+    "OpenSky: anonymous 400 req/day (4-min refresh) or account 4,000 req/day (30-sec refresh).</p>"
     "</body></html>";
   portalServer->send(200, "text/html", html);
 }
@@ -192,8 +275,12 @@ static void fcHandleSave() {
   String pass   = portalServer->hasArg("pass")   ? portalServer->arg("pass")           : "";
   String lat    = portalServer->hasArg("lat")    ? portalServer->arg("lat")            : "";
   String lon    = portalServer->hasArg("lon")    ? portalServer->arg("lon")            : "";
-  int    radius = portalServer->hasArg("radius") ? portalServer->arg("radius").toInt() : 150;
-  radius = constrain(radius, 50, 500);
+  bool   use_miles  = portalServer->hasArg("units") && portalServer->arg("units") == "miles";
+  int    radius_raw = portalServer->hasArg("radius") ? portalServer->arg("radius").toInt() : 150;
+  int    radius     = use_miles ? (int)(radius_raw * 1.60934f + 0.5f) : radius_raw;
+  radius = constrain(radius, 20, 500);
+  String client_id  = portalServer->hasArg("client_id")     ? portalServer->arg("client_id")     : "";
+  String client_sec = portalServer->hasArg("client_secret") ? portalServer->arg("client_secret") : "";
 
   if (ssid.length() == 0) {
     portalServer->send(400, "text/html",
@@ -204,7 +291,8 @@ static void fcHandleSave() {
     return;
   }
 
-  fcSaveSettings(ssid.c_str(), pass.c_str(), lat.c_str(), lon.c_str(), radius);
+  fcSaveSettings(ssid.c_str(), pass.c_str(), lat.c_str(), lon.c_str(), radius, use_miles,
+                 client_id.c_str(), client_sec.c_str());
 
   portalServer->send(200, "text/html",
     "<html><head><meta charset='UTF-8'>"
@@ -213,7 +301,8 @@ static void fcHandleSave() {
     "</head><body>"
     "<h2>&#9989; Settings Saved!</h2>"
     "<p>Connecting to <b>" + ssid + "</b>...</p>"
-    "<p>Scan radius: <b>" + String(radius) + " km</b></p>"
+    "<p>Scan radius: <b>" + String(radius_raw) + (use_miles ? " mi" : " km") + "</b></p>"
+    "<p>Refresh: <b>" + (client_id.length() > 0 ? "30 sec (authenticated)" : "4 min (anonymous)") + "</b></p>"
     "<p>You can close this page and disconnect from <b>FlightCYD_Setup</b>.</p>"
     "</body></html>");
 

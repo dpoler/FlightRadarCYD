@@ -172,7 +172,10 @@ static void drawRadar() {
     gfx->drawCircle(cx, cy, rr, ri == 3 ? COL_RING : COL_GRID);
     // Range label
     char rlbl[12];
-    snprintf(rlbl, sizeof(rlbl), "%dkm", (fc_radius_km * ri) / 3);
+    if (fc_use_miles)
+      snprintf(rlbl, sizeof(rlbl), "%.0fmi", (fc_radius_km * ri) / 3.0f * 0.621371f);
+    else
+      snprintf(rlbl, sizeof(rlbl), "%dkm", (fc_radius_km * ri) / 3);
     gfx->setTextColor(COL_RING_LABEL);
     gfx->setTextSize(1);
     gfx->setCursor(cx + rr + 2, cy - 4);
@@ -276,7 +279,10 @@ static void drawListRow(int rowIdx, int dataIdx, bool selected) {
   }
 
   // Distance
-  snprintf(buf, sizeof(buf), "%4.0fkm", f.dist_km);
+  if (fc_use_miles)
+    snprintf(buf, sizeof(buf), "%4.0fmi", f.dist_km * 0.621371f);
+  else
+    snprintf(buf, sizeof(buf), "%4.0fkm", f.dist_km);
   gfx->setTextColor(0xFFE0);
   gfx->setCursor(186, ry + 5);
   gfx->print(buf);
@@ -368,8 +374,10 @@ static void drawDetail(int idx) {
 
   // Distance + heading
   gfx->setCursor(4, py + 48);
-  snprintf(buf, sizeof(buf), "%.0fkm  %s  hdg %.0f%c",
-           f.dist_km, fc_compass(f.bearing), f.track, 176);
+  snprintf(buf, sizeof(buf), "%.0f%s  %s  hdg %.0f%c",
+           fc_use_miles ? f.dist_km * 0.621371f : f.dist_km,
+           fc_use_miles ? "mi" : "km",
+           fc_compass(f.bearing), f.track, 176);
   gfx->print(buf);
 
   // Dismiss hint
@@ -396,7 +404,7 @@ static void doFetch() {
   showStatus("Fetching aircraft...");
   float uLat = atof(fc_lat);
   float uLon = atof(fc_lon);
-  fc_fetch_ok = openSkyFetch(uLat, uLon, (float)fc_radius_km);
+  fc_fetch_ok = openSkyFetch(uLat, uLon, (float)fc_radius_km, fc_client_id, fc_client_secret);
 
   // Update time stamp
   struct tm t;
@@ -523,7 +531,8 @@ void loop() {
   }
 
   // Auto-fetch on interval
-  if (fc_last_fetch == 0 || (millis() - fc_last_fetch) > OPENSKY_INTERVAL) {
+  unsigned long fetchInterval = (fc_client_id[0] != '\0') ? OPENSKY_INTERVAL_AUTH : OPENSKY_INTERVAL_ANON;
+  if (fc_last_fetch == 0 || (millis() - fc_last_fetch) > fetchInterval) {
     doFetch();
   }
 

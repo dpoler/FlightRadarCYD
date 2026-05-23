@@ -5,8 +5,13 @@
 #include <ArduinoJson.h>
 #include <math.h>
 
-// Refresh every 4 minutes — stays safely under OpenSky's 400 req/day anonymous limit
-#define OPENSKY_INTERVAL (4UL * 60UL * 1000UL)
+// Anonymous:     400 req/day → 240 s interval → 360 req/day (safe)
+// Authenticated: 4000 req/day →  30 s interval → 2880 req/day (safe)
+#define OPENSKY_INTERVAL_ANON (4UL * 60UL * 1000UL)
+#define OPENSKY_INTERVAL_AUTH (30UL * 1000UL)
+
+static char          fc_access_token[2048] = "";
+static unsigned long fc_token_expiry_ms    = 0;
 
 #define MAX_FLIGHTS 30
 
@@ -79,10 +84,66 @@ static void fc_insert_sorted(const FlightData &f) {
 }
 
 // ---------------------------------------------------------------------------
+// Fetch OAuth2 Bearer token using client credentials grant.
+// ---------------------------------------------------------------------------
+static bool fc_fetch_token(const char *clientId, const char *clientSecret) {
+  const char *tokenUrl =
+    "https://auth.opensky-network.org/auth/realms/opensky-network"
+    "/protocol/openid-connect/token";
+
+  WiFiClientSecure *client = new WiFiClientSecure;
+  if (!client) return false;
+  client->setInsecure();
+
+  String body;
+  {
+    HTTPClient https;
+    https.begin(*client, tokenUrl);
+    https.setTimeout(15000);
+    https.addHeader("Content-Type", "application/x-www-form-urlencoded");
+    String payload = "grant_type=client_credentials&client_id=";
+    payload += clientId;
+    payload += "&client_secret=";
+    payload += clientSecret;
+    int code = https.POST(payload);
+    if (code == HTTP_CODE_OK) {
+      body = https.getString();
+    } else {
+      Serial.printf("[OpenSky] Token HTTP %d\n", code);
+    }
+    https.end();
+  }
+  delete client;
+
+  if (body.isEmpty()) return false;
+
+  DynamicJsonDocument doc(4096);
+  if (deserializeJson(doc, body)) {
+    Serial.println("[OpenSky] Token parse failed");
+    return false;
+  }
+
+  const char *token = doc["access_token"] | "";
+  int expires_in    = doc["expires_in"]   | 300;
+
+  if (token[0] == '\0') {
+    Serial.println("[OpenSky] No access_token in response");
+    return false;
+  }
+
+  strncpy(fc_access_token, token, sizeof(fc_access_token) - 1);
+  fc_access_token[sizeof(fc_access_token) - 1] = '\0';
+  fc_token_expiry_ms = millis() + (unsigned long)(expires_in - 60) * 1000UL;
+  Serial.printf("[OpenSky] Token acquired, expires in %ds\n", expires_in);
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // Fetch aircraft from OpenSky Network and populate fc_flights[].
 // Returns true if the request succeeded (even if zero aircraft found).
 // ---------------------------------------------------------------------------
-bool openSkyFetch(float userLat, float userLon, float radiusKm) {
+bool openSkyFetch(float userLat, float userLon, float radiusKm,
+                  const char *clientId = "", const char *clientSecret = "") {
   // Build bounding box URL
   float degLat = radiusKm / 111.0f;
   float degLon = radiusKm / (111.0f * cosf(userLat * (float)M_PI / 180.0f));
@@ -95,6 +156,10 @@ bool openSkyFetch(float userLat, float userLon, float radiusKm) {
 
   Serial.printf("[OpenSky] GET %s\n", url);
 
+  bool hasAuth = clientId && clientId[0] != '\0';
+  if (hasAuth && (fc_access_token[0] == '\0' || millis() >= fc_token_expiry_ms))
+    hasAuth = fc_fetch_token(clientId, clientSecret);
+
   WiFiClientSecure *client = new WiFiClientSecure;
   if (!client) return false;
   client->setInsecure();
@@ -104,6 +169,7 @@ bool openSkyFetch(float userLat, float userLon, float radiusKm) {
     https.begin(*client, url);
     https.setTimeout(20000);
     https.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    if (hasAuth) https.addHeader("Authorization", String("Bearer ") + fc_access_token);
     int code = https.GET();
     if (code == HTTP_CODE_OK) {
       body = https.getString();
