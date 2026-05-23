@@ -297,6 +297,19 @@ static void drawListRow(int rowIdx, int dataIdx, bool selected) {
   gfx->setCursor(268, ry + 5);
   const char *arrows[] = { "^", "^>",">" ,"v>","v" ,"v<","<" ,"^<","^" };
   gfx->print(arrows[(int)((f.track + 22.5f) / 45.0f) % 8]);
+
+  // Vertical trend
+  if (!f.on_ground && !isnan(f.vert_ms)) {
+    if (f.vert_ms >= 2.0f) {
+      gfx->setTextColor(0x07E0);  // green — climbing
+      gfx->setCursor(296, ry + 5);
+      gfx->print("^");
+    } else if (f.vert_ms <= -2.0f) {
+      gfx->setTextColor(0xFFE0);  // yellow — descending
+      gfx->setCursor(296, ry + 5);
+      gfx->print("v");
+    }
+  }
 }
 
 static void drawList() {
@@ -312,6 +325,7 @@ static void drawList() {
   gfx->setCursor(186, CONTENT_Y + 3); gfx->print(" DIST");
   gfx->setCursor(240, CONTENT_Y + 3); gfx->print("DIR");
   gfx->setCursor(268, CONTENT_Y + 3); gfx->print("HDG");
+  gfx->setCursor(296, CONTENT_Y + 3); gfx->print("V");
 
   if (fc_flight_count == 0) {
     gfx->setTextColor(COL_DIM);
@@ -362,13 +376,21 @@ static void drawDetail(int idx) {
   snprintf(buf, sizeof(buf), "%s  [%s]", f.country, f.icao);
   gfx->print(buf);
 
-  // Altitude + speed
+  // Altitude + speed + vertical trend
   gfx->setTextColor(RGB565_WHITE);
   gfx->setCursor(4, py + 36);
   if (f.on_ground) {
     gfx->print("ON GROUND");
   } else if (!isnan(f.alt_m)) {
-    snprintf(buf, sizeof(buf), "%.0fft  %.0fkn", mToFt(f.alt_m), msToKts(f.vel_ms));
+    char trend = ' ';
+    if (!isnan(f.vert_ms)) {
+      if      (f.vert_ms >=  2.0f) trend = '^';
+      else if (f.vert_ms <= -2.0f) trend = 'v';
+    }
+    if (trend != ' ')
+      snprintf(buf, sizeof(buf), "%.0fft  %.0fkn  %c", mToFt(f.alt_m), msToKts(f.vel_ms), trend);
+    else
+      snprintf(buf, sizeof(buf), "%.0fft  %.0fkn", mToFt(f.alt_m), msToKts(f.vel_ms));
     gfx->print(buf);
   }
 
@@ -405,6 +427,13 @@ static void doFetch() {
   float uLat = atof(fc_lat);
   float uLon = atof(fc_lon);
   fc_fetch_ok = openSkyFetch(uLat, uLon, (float)fc_radius_km, fc_client_id, fc_client_secret);
+
+  if (fc_hide_ground) {
+    int n = 0;
+    for (int i = 0; i < fc_flight_count; i++)
+      if (!fc_flights[i].on_ground) fc_flights[n++] = fc_flights[i];
+    fc_flight_count = n;
+  }
 
   // Update time stamp
   struct tm t;

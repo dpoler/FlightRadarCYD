@@ -18,6 +18,7 @@ static int  fc_radius_km      = 150;   // default scan radius, always stored in 
 static bool fc_use_miles      = false; // display distances in miles
 static char fc_client_id[80]     = ""; // optional OpenSky OAuth2 credentials
 static char fc_client_secret[64] = ""; // enables 30-second refresh
+static bool fc_hide_ground    = false; // filter out on-ground aircraft
 static bool fc_has_settings   = false;
 
 // ---------------------------------------------------------------------------
@@ -37,8 +38,9 @@ static void fcLoadSettings() {
   String pass = prefs.getString("pass", "");
   String lat  = prefs.getString("lat",  "");
   String lon  = prefs.getString("lon",  "");
-  fc_radius_km = prefs.getInt("radius", 150);
-  fc_use_miles = prefs.getBool("miles", false);
+  fc_radius_km   = prefs.getInt("radius", 150);
+  fc_use_miles   = prefs.getBool("miles", false);
+  fc_hide_ground = prefs.getBool("hide_gnd", false);
   String client_id  = prefs.getString("client_id",  "");
   String client_sec = prefs.getString("client_sec",  "");
   prefs.end();
@@ -55,7 +57,8 @@ static void fcLoadSettings() {
 
 static void fcSaveSettings(const char *ssid, const char *pass,
                            const char *lat, const char *lon, int radius, bool use_miles,
-                           const char *client_id, const char *client_sec) {
+                           const char *client_id, const char *client_sec,
+                           bool hide_ground) {
   Preferences prefs;
   prefs.begin("flightcyd", false);
   prefs.putString("ssid",       ssid);
@@ -64,6 +67,7 @@ static void fcSaveSettings(const char *ssid, const char *pass,
   prefs.putString("lon",        lon);
   prefs.putInt   ("radius",     radius);
   prefs.putBool  ("miles",      use_miles);
+  prefs.putBool  ("hide_gnd",   hide_ground);
   prefs.putString("client_id",  client_id);
   prefs.putString("client_sec", client_sec);
   prefs.end();
@@ -76,6 +80,7 @@ static void fcSaveSettings(const char *ssid, const char *pass,
   strncpy(fc_client_secret, client_sec, sizeof(fc_client_secret) - 1);
   fc_radius_km    = radius;
   fc_use_miles    = use_miles;
+  fc_hide_ground  = hide_ground;
   fc_has_settings = true;
 }
 
@@ -226,6 +231,12 @@ static void fcHandleRoot() {
     "document.getElementById('radius').innerHTML="
     "document.getElementById('units').value==='miles'?mO:kO;}"
     "</script>"
+    "<label>Filter Options:</label>"
+    "<label style='font-weight:normal;display:flex;align-items:center;gap:8px'>"
+    "<input type='checkbox' name='hide_ground' value='1'";
+  if (fc_hide_ground) html += " checked";
+  html +=
+    "> Hide aircraft on ground</label>"
     "<hr>"
     "<p style='text-align:left;color:#88aacc;margin:0 0 8px'>"
     "&#128274; OpenSky OAuth2 credentials (optional) — enables 30-second refresh"
@@ -281,6 +292,7 @@ static void fcHandleSave() {
   radius = constrain(radius, 20, 500);
   String client_id  = portalServer->hasArg("client_id")     ? portalServer->arg("client_id")     : "";
   String client_sec = portalServer->hasArg("client_secret") ? portalServer->arg("client_secret") : "";
+  bool   hide_ground = portalServer->hasArg("hide_ground");
 
   if (ssid.length() == 0) {
     portalServer->send(400, "text/html",
@@ -292,7 +304,7 @@ static void fcHandleSave() {
   }
 
   fcSaveSettings(ssid.c_str(), pass.c_str(), lat.c_str(), lon.c_str(), radius, use_miles,
-                 client_id.c_str(), client_sec.c_str());
+                 client_id.c_str(), client_sec.c_str(), hide_ground);
 
   portalServer->send(200, "text/html",
     "<html><head><meta charset='UTF-8'>"

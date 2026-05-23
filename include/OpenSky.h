@@ -24,6 +24,7 @@ struct FlightData {
   float vel_ms;        // ground speed in m/s
   float track;         // true track in degrees (0 = N)
   bool  on_ground;
+  float vert_ms;       // vertical rate m/s (+ climb, - descend, NAN = unknown)
   float dist_km;       // haversine distance from user (computed)
   float bearing;       // bearing from user (degrees, 0 = N, computed)
 };
@@ -232,6 +233,7 @@ bool openSkyFetch(float userLat, float userLon, float radiusKm,
     f.on_ground = state[8]           | false;
     f.vel_ms    = state[9].isNull()  ? 0.0f : state[9].as<float>();
     f.track     = state[10].isNull() ? 0.0f : state[10].as<float>();
+    f.vert_ms   = state[11].isNull() ? NAN  : state[11].as<float>();
     f.dist_km   = dist;
     f.bearing   = fc_bearing(userLat, userLon, lat, lon);
 
