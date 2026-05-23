@@ -12,6 +12,7 @@
 #include <XPT2046_Touchscreen.h>
 #include "Portal.h"
 #include "OpenSky.h"
+#include "ADSBDB.h"
 
 // ---------------------------------------------------------------------------
 // Display — CYD ILI9341 320×240 landscape
@@ -369,11 +370,16 @@ static void drawDetail(int idx) {
   gfx->setCursor(4, py + 4);
   gfx->print(f.callsign);
 
-  // Country + ICAO small
+  // Country + ICAO + aircraft type
   gfx->setTextColor(COL_DIM);
   gfx->setTextSize(1);
   gfx->setCursor(4, py + 24);
-  snprintf(buf, sizeof(buf), "%s  [%s]", f.country, f.icao);
+  if (f.ac_type[0] != '\0' && f.ac_maker[0] != '\0')
+    snprintf(buf, sizeof(buf), "%s [%s]  %s %s", f.country, f.icao, f.ac_maker, f.ac_type);
+  else if (f.ac_type[0] != '\0')
+    snprintf(buf, sizeof(buf), "%s [%s]  %s", f.country, f.icao, f.ac_type);
+  else
+    snprintf(buf, sizeof(buf), "%s [%s]", f.country, f.icao);
   gfx->print(buf);
 
   // Altitude + speed + vertical trend
@@ -468,7 +474,11 @@ static void handleTouch(int tx, int ty) {
       fc_detail_idx = (fc_detail_idx == rowIdx) ? -1 : rowIdx;
       drawList();
       drawFooter();
-      if (fc_detail_idx >= 0) drawDetail(fc_detail_idx);
+      if (fc_detail_idx >= 0) {
+        drawDetail(fc_detail_idx);
+        if (adsbdbFetchType(fc_flights[fc_detail_idx]))
+          drawDetail(fc_detail_idx);  // redraw once type data arrives
+      }
     }
   }
 }

@@ -27,6 +27,9 @@ struct FlightData {
   float vert_ms;       // vertical rate m/s (+ climb, - descend, NAN = unknown)
   float dist_km;       // haversine distance from user (computed)
   float bearing;       // bearing from user (degrees, 0 = N, computed)
+  char  ac_type[12];   // ICAO type code e.g. "B738" (from adsbdb, on-tap)
+  char  ac_maker[24];  // manufacturer e.g. "Boeing"
+  bool  type_fetched;  // true once adsbdb lookup has been attempted
 };
 
 FlightData fc_flights[MAX_FLIGHTS];
@@ -234,8 +237,11 @@ bool openSkyFetch(float userLat, float userLon, float radiusKm,
     f.vel_ms    = state[9].isNull()  ? 0.0f : state[9].as<float>();
     f.track     = state[10].isNull() ? 0.0f : state[10].as<float>();
     f.vert_ms   = state[11].isNull() ? NAN  : state[11].as<float>();
-    f.dist_km   = dist;
-    f.bearing   = fc_bearing(userLat, userLon, lat, lon);
+    f.dist_km      = dist;
+    f.bearing      = fc_bearing(userLat, userLon, lat, lon);
+    f.ac_type[0]   = '\0';
+    f.ac_maker[0]  = '\0';
+    f.type_fetched = false;
 
     fc_insert_sorted(f);
   }
