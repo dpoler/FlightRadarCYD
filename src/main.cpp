@@ -285,7 +285,7 @@ static void drawListRow(int rowIdx, int dataIdx, bool selected) {
     snprintf(buf, sizeof(buf), "%4.0fmi", f.dist_km * 0.621371f);
   else
     snprintf(buf, sizeof(buf), "%4.0fkm", f.dist_km);
-  gfx->setTextColor(0xFFE0);
+  gfx->setTextColor(col);
   gfx->setCursor(186, ry + 5);
   gfx->print(buf);
 
@@ -303,11 +303,11 @@ static void drawListRow(int rowIdx, int dataIdx, bool selected) {
   // Vertical trend
   if (!f.on_ground && !isnan(f.vert_ms)) {
     if (f.vert_ms >= 2.0f) {
-      gfx->setTextColor(0x07E0);  // green — climbing
+      gfx->setTextColor(col);
       gfx->setCursor(296, ry + 5);
       gfx->print("^");
     } else if (f.vert_ms <= -2.0f) {
-      gfx->setTextColor(0xFFE0);  // yellow — descending
+      gfx->setTextColor(col);
       gfx->setCursor(296, ry + 5);
       gfx->print("v");
     }
