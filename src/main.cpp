@@ -421,9 +421,9 @@ static void drawDetail(int idx) {
   }
 
   // Dismiss hint
-  gfx->setTextColor(0x2104);
+  gfx->setTextColor(0x4208);
   gfx->setCursor(4, py + 74);
-  gfx->print("tap again to dismiss");
+  gfx->print("tap to dismiss");
 }
 
 // ---------------------------------------------------------------------------
@@ -476,6 +476,14 @@ static void handleTouch(int tx, int ty) {
       fc_detail_idx = -1;
       redraw();
     }
+    return;
+  }
+
+  // LIST mode: tap inside the overlay to dismiss it
+  if (fc_mode == MODE_LIST && fc_detail_idx >= 0 && ty >= CONTENT_Y + CONTENT_H - 90) {
+    fc_detail_idx = -1;
+    drawList();
+    drawFooter();
     return;
   }
 
