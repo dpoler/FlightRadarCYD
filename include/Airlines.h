@@ -74,6 +74,7 @@ static const AirlineEntry AIRLINE_TABLE[] = {
   {"IBE", "Iberia"},
   {"ICE", "Icelandair"},
   {"IGO", "IndiGo"},
+  {"IJA", "Intl Jet Aviation Svcs"},
   {"JAL", "Japan Airlines"},
   {"JBU", "JetBlue Airways"},
   {"JIA", "PSA Airlines"},
