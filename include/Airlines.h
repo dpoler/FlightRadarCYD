@@ -90,6 +90,7 @@ static const AirlineEntry AIRLINE_TABLE[] = {
   {"MAS", "Malaysia Airlines"},
   {"MEA", "Middle East Airlines"},
   {"MSR", "EgyptAir"},
+  {"MXY", "Breeze Airways"},
   {"NAX", "Norwegian Air"},
   {"NCB", "Northern Air Cargo"},
   {"NJE", "NetJets Europe"},
