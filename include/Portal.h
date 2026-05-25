@@ -20,7 +20,6 @@ static int  fc_elevation_ft   = 0;     // location elevation in feet (MSL) for a
 static char fc_client_id[80]     = ""; // optional OpenSky OAuth2 credentials
 static char fc_client_secret[64] = ""; // enables 30-second refresh
 static bool fc_hide_ground    = false; // filter out on-ground aircraft
-static bool fc_show_route     = true;  // fetch & show typical route in detail view
 static bool fc_has_settings   = false;
 
 // ---------------------------------------------------------------------------
@@ -42,9 +41,8 @@ static void fcLoadSettings() {
   String lon  = prefs.getString("lon",  "");
   fc_radius_km   = prefs.getInt("radius", 150);
   fc_use_miles   = prefs.getBool("miles", false);
-  fc_hide_ground  = prefs.getBool("hide_gnd",    false);
-  fc_show_route   = prefs.getBool("show_route",  true);
-  fc_elevation_ft = prefs.getInt ("elev_ft",     0);
+  fc_hide_ground  = prefs.getBool("hide_gnd", false);
+  fc_elevation_ft = prefs.getInt ("elev_ft",  0);
   String client_id  = prefs.getString("client_id",  "");
   String client_sec = prefs.getString("client_sec",  "");
   prefs.end();
@@ -62,7 +60,7 @@ static void fcLoadSettings() {
 static void fcSaveSettings(const char *ssid, const char *pass,
                            const char *lat, const char *lon, int radius, bool use_miles,
                            const char *client_id, const char *client_sec,
-                           bool hide_ground, bool show_route, int elevation_ft) {
+                           bool hide_ground, int elevation_ft) {
   Preferences prefs;
   prefs.begin("flightcyd", false);
   prefs.putString("ssid",       ssid);
@@ -71,9 +69,8 @@ static void fcSaveSettings(const char *ssid, const char *pass,
   prefs.putString("lon",        lon);
   prefs.putInt   ("radius",     radius);
   prefs.putBool  ("miles",      use_miles);
-  prefs.putBool  ("hide_gnd",    hide_ground);
-  prefs.putBool  ("show_route",  show_route);
-  prefs.putInt   ("elev_ft",     elevation_ft);
+  prefs.putBool  ("hide_gnd", hide_ground);
+  prefs.putInt   ("elev_ft",  elevation_ft);
   prefs.putString("client_id",  client_id);
   prefs.putString("client_sec", client_sec);
   prefs.end();
@@ -87,7 +84,6 @@ static void fcSaveSettings(const char *ssid, const char *pass,
   fc_radius_km    = radius;
   fc_use_miles    = use_miles;
   fc_hide_ground  = hide_ground;
-  fc_show_route   = show_route;
   fc_elevation_ft = elevation_ft;
   fc_has_settings = true;
 }
@@ -250,17 +246,6 @@ static void fcHandleRoot() {
   if (fc_hide_ground) html += " checked";
   html +=
     "> Hide aircraft on ground</label>"
-    "<label style='font-weight:normal;display:flex;align-items:center;gap:8px'>"
-    "<input type='checkbox' name='show_route' value='1' style='width:auto'";
-  if (fc_show_route) html += " checked";
-  html +=
-    "> Show typical origin/destination in detail view</label>"
-    "<p style='text-align:left;color:#445566;font-size:0.8em;margin:2px 0 0 24px'>"
-    "Route data from <b>adsbdb.com</b> &mdash; a community-maintained database of "
-    "historically observed routes. It records what a callsign <em>typically</em> flies, "
-    "not today&apos;s actual flight plan. Data may be days or weeks old and will be wrong "
-    "for charter flights, reused flight numbers, irregular operations, or recently changed "
-    "schedules. A &lsquo;~&rsquo; prefix on the display indicates this uncertainty.</p>"
     "<hr>"
     "<p style='text-align:left;color:#88aacc;margin:0 0 8px'>"
     "&#128274; OpenSky OAuth2 credentials (optional) — enables 30-second refresh"
@@ -317,7 +302,6 @@ static void fcHandleSave() {
   String client_id  = portalServer->hasArg("client_id")     ? portalServer->arg("client_id")     : "";
   String client_sec = portalServer->hasArg("client_secret") ? portalServer->arg("client_secret") : "";
   bool   hide_ground   = portalServer->hasArg("hide_ground");
-  bool   show_route    = portalServer->hasArg("show_route");
   int    elevation_ft  = portalServer->hasArg("elevation") ? portalServer->arg("elevation").toInt() : 0;
   elevation_ft = constrain(elevation_ft, -1500, 20000);
 
@@ -331,7 +315,7 @@ static void fcHandleSave() {
   }
 
   fcSaveSettings(ssid.c_str(), pass.c_str(), lat.c_str(), lon.c_str(), radius, use_miles,
-                 client_id.c_str(), client_sec.c_str(), hide_ground, show_route, elevation_ft);
+                 client_id.c_str(), client_sec.c_str(), hide_ground, elevation_ft);
 
   portalServer->send(200, "text/html",
     "<html><head><meta charset='UTF-8'>"

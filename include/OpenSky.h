@@ -30,11 +30,6 @@ struct FlightData {
   char  ac_type[12];   // ICAO type code e.g. "B738" (from adsbdb, on-tap)
   char  ac_maker[24];  // manufacturer e.g. "Boeing"
   bool  type_fetched;  // true once adsbdb type lookup has been attempted
-  char  origin_iata[5];   // e.g. "ORD"
-  char  dest_iata[5];     // e.g. "LAX"
-  char  origin_city[24];  // e.g. "Chicago"
-  char  dest_city[24];    // e.g. "Los Angeles"
-  bool  route_fetched;    // true once adsbdb route lookup has been attempted
 };
 
 FlightData fc_flights[MAX_FLIGHTS];
@@ -244,14 +239,9 @@ bool openSkyFetch(float userLat, float userLon, float radiusKm,
     f.vert_ms   = state[11].isNull() ? NAN  : state[11].as<float>();
     f.dist_km      = dist;
     f.bearing      = fc_bearing(userLat, userLon, lat, lon);
-    f.ac_type[0]    = '\0';
-    f.ac_maker[0]   = '\0';
-    f.type_fetched  = false;
-    f.origin_iata[0] = '\0';
-    f.dest_iata[0]   = '\0';
-    f.origin_city[0] = '\0';
-    f.dest_city[0]   = '\0';
-    f.route_fetched  = false;
+    f.ac_type[0]   = '\0';
+    f.ac_maker[0]  = '\0';
+    f.type_fetched = false;
 
     fc_insert_sorted(f);
   }
