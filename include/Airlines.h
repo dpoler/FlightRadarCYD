@@ -131,6 +131,7 @@ static const AirlineEntry AIRLINE_TABLE[] = {
   {"UAE", "Emirates"},
   {"UAL", "United Airlines"},
   {"UPS", "UPS Airlines"},
+  {"USC", "AirNet Express"},
   {"UZB", "Uzbekistan Airways"},
   {"VIR", "Virgin Atlantic"},
   {"VIV", "VivaAerobus"},
