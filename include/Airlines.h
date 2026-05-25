@@ -1,156 +1,78 @@
 #pragma once
+#include <Arduino.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <string.h>
+
+#define AIRLINES_URL \
+  "https://raw.githubusercontent.com/dpoler/Flight-CYD-ESP32-Radar/main/airlines.csv"
+#define AIRLINES_MAX 400
 
 struct AirlineEntry { char code[4]; char name[26]; };
 
-static const AirlineEntry AIRLINE_TABLE[] = {
-  {"AAL", "American Airlines"},
-  {"AAR", "Asiana Airlines"},
-  {"AAY", "Allegiant Air"},
-  {"ABX", "ABX Air"},
-  {"ABY", "Air Arabia"},
-  {"ACA", "Air Canada"},
-  {"AEA", "Air Europa"},
-  {"AEE", "Aegean Airlines"},
-  {"AFL", "Aeroflot"},
-  {"AFR", "Air France"},
-  {"AIC", "Air India"},
-  {"AMX", "Aeromexico"},
-  {"ANA", "All Nippon Airways"},
-  {"ANZ", "Air New Zealand"},
-  {"ARG", "Aerolineas Argentinas"},
-  {"ASA", "Alaska Airlines"},
-  {"ASH", "Mesa Airlines"},
-  {"ATN", "Air Transport Intl"},
-  {"AUA", "Austrian Airlines"},
-  {"AVA", "Avianca"},
-  {"AWI", "Air Wisconsin"},
-  {"AZA", "ITA Airways"},
-  {"AZU", "Azul Airlines"},
-  {"BAW", "British Airways"},
-  {"BEL", "Brussels Airlines"},
-  {"BOE", "Boeing"},
-  {"BTI", "Air Baltic"},
-  {"BTQ", "Boutique Air"},
-  {"BWA", "Caribbean Airlines"},
-  {"CAL", "China Airlines"},
-  {"CCA", "Air China"},
-  {"CEB", "Cebu Pacific"},
-  {"CES", "China Eastern"},
-  {"CFG", "Condor"},
-  {"CHH", "Hainan Airlines"},
-  {"CJT", "Cargojet"},
-  {"CKS", "Kalitta Air"},
-  {"CLX", "Cargolux"},
-  {"CMP", "Copa Airlines"},
-  {"CPA", "Cathay Pacific"},
-  {"CSN", "China Southern"},
-  {"CXA", "Xiamen Airlines"},
-  {"DAH", "Air Algerie"},
-  {"DAL", "Delta Air Lines"},
-  {"DLH", "Lufthansa"},
-  {"EDV", "Endeavor Air"},
-  {"EIN", "Aer Lingus"},
-  {"EJA", "Executive Jet Aviation"},
-  {"EJM", "Executive Jet Mgmt"},
-  {"ELY", "El Al"},
-  {"ENY", "Envoy Air"},
-  {"ETD", "Etihad Airways"},
-  {"ETH", "Ethiopian Airlines"},
-  {"EWG", "Eurowings"},
-  {"EXS", "Jet2"},
-  {"EZY", "easyJet"},
-  {"FDB", "flydubai"},
-  {"FDX", "FedEx"},
-  {"FFT", "Frontier Airlines"},
-  {"FIN", "Finnair"},
-  {"FSI", "FlightSafety Intl"},
-  {"GEC", "Lufthansa Cargo"},
-  {"GFA", "Gulf Air"},
-  {"GJS", "GoJet Airlines"},
-  {"GLO", "GOL Airlines"},
-  {"GTI", "Atlas Air"},
-  {"HAL", "Hawaiian Airlines"},
-  {"HVN", "Vietnam Airlines"},
-  {"IBE", "Iberia"},
-  {"ICE", "Icelandair"},
-  {"IGO", "IndiGo"},
-  {"IJA", "Intl Jet Aviation Svcs"},
-  {"JAL", "Japan Airlines"},
-  {"JBU", "JetBlue Airways"},
-  {"JIA", "PSA Airlines"},
-  {"JRE", "flyExclusive"},
-  {"JSX", "JSX"},
-  {"JZA", "Jazz Aviation"},
-  {"KAL", "Korean Air"},
-  {"KLM", "KLM"},
-  {"KQA", "Kenya Airways"},
-  {"LAN", "LATAM Airlines"},
-  {"LOT", "LOT Polish Airlines"},
-  {"LXJ", "Flexjet"},
-  {"MAS", "Malaysia Airlines"},
-  {"MEA", "Middle East Airlines"},
-  {"MSR", "EgyptAir"},
-  {"MXY", "Breeze Airways"},
-  {"NAX", "Norwegian Air"},
-  {"NCB", "Northern Air Cargo"},
-  {"NJE", "NetJets Europe"},
-  {"NKS", "Spirit Airlines"},
-  {"OAL", "Olympic Air"},
-  {"PAC", "Polar Air Cargo"},
-  {"PAL", "Philippine Airlines"},
-  {"PDT", "Piedmont Airlines"},
-  {"PGT", "Pegasus Airlines"},
-  {"QFA", "Qantas"},
-  {"QTR", "Qatar Airways"},
-  {"QXE", "Horizon Air"},
-  {"RAM", "Royal Air Maroc"},
-  {"RBA", "Royal Brunei Airlines"},
-  {"RCH", "Air Mobility Command"},
-  {"RJA", "Royal Jordanian"},
-  {"ROT", "TAROM"},
-  {"RPA", "Republic Airways"},
-  {"RYR", "Ryanair"},
-  {"SAA", "South African Airways"},
-  {"SAS", "Scandinavian Airlines"},
-  {"SCX", "Sun Country Airlines"},
-  {"SEJ", "SpiceJet"},
-  {"SIA", "Singapore Airlines"},
-  {"SKW", "SkyWest Airlines"},
-  {"SOO", "Southern Air"},
-  {"SVA", "Saudia"},
-  {"SWA", "Southwest Airlines"},
-  {"SWR", "SWISS"},
-  {"TAM", "LATAM Brasil"},
-  {"TAP", "TAP Air Portugal"},
-  {"TGW", "Scoot"},
-  {"THA", "Thai Airways"},
-  {"THY", "Turkish Airlines"},
-  {"TOM", "TUI Airways"},
-  {"TRA", "Transavia"},
-  {"TSC", "Air Transat"},
-  {"UAE", "Emirates"},
-  {"UAL", "United Airlines"},
-  {"UPS", "UPS Airlines"},
-  {"USC", "AirNet Express"},
-  {"UZB", "Uzbekistan Airways"},
-  {"VIR", "Virgin Atlantic"},
-  {"VIV", "VivaAerobus"},
-  {"VJC", "VietJet Air"},
-  {"VJT", "VistaJet"},
-  {"VLG", "Vueling"},
-  {"VOI", "Volaris"},
-  {"VOZ", "Virgin Australia"},
-  {"VTE", "Contour Airlines"},
-  {"WJA", "WestJet"},
-  {"WUP", "Wheels Up"},
-  {"WZZ", "Wizz Air"},
-};
-static const int AIRLINE_TABLE_SIZE =
-  (int)(sizeof(AIRLINE_TABLE) / sizeof(AIRLINE_TABLE[0]));
+static AirlineEntry g_airlines[AIRLINES_MAX];
+static int          g_airline_count = 0;
 
-// Returns the airline name for a callsign's ICAO prefix (e.g. "AAL123" -> "American Airlines"),
-// or nullptr if the callsign isn't a scheduled airline flight or the code isn't in the table.
+// Fetch airlines.csv from GitHub and parse into g_airlines[].
+// Call once after WiFi connects. Degrades gracefully on failure (no names shown).
+static bool airlinesLoad() {
+  WiFiClientSecure *client = new WiFiClientSecure;
+  if (!client) return false;
+  client->setInsecure();
+
+  String body;
+  {
+    HTTPClient https;
+    https.begin(*client, AIRLINES_URL);
+    https.setTimeout(15000);
+    int code = https.GET();
+    if (code == HTTP_CODE_OK) body = https.getString();
+    else Serial.printf("[Airlines] HTTP %d\n", code);
+    https.end();
+  }
+  delete client;
+
+  if (body.isEmpty()) return false;
+
+  g_airline_count = 0;
+  int pos = 0;
+  int len = (int)body.length();
+
+  while (pos < len && g_airline_count < AIRLINES_MAX) {
+    char c = body[pos];
+    // Skip comment lines and blank lines
+    if (c == '#' || c == '\r' || c == '\n') {
+      while (pos < len && body[pos] != '\n') pos++;
+      pos++;
+      continue;
+    }
+    int comma = body.indexOf(',', pos);
+    if (comma < 0) break;
+    int eol = body.indexOf('\n', comma);
+    if (eol < 0) eol = len;
+
+    String icao = body.substring(pos, comma);
+    String name = body.substring(comma + 1, eol);
+    icao.trim();
+    name.trim();
+
+    int ilen = (int)icao.length();
+    if (ilen >= 2 && ilen <= 3 && name.length() > 0) {
+      strncpy(g_airlines[g_airline_count].code, icao.c_str(), 3);
+      g_airlines[g_airline_count].code[3] = '\0';
+      strncpy(g_airlines[g_airline_count].name, name.c_str(), 25);
+      g_airlines[g_airline_count].name[25] = '\0';
+      g_airline_count++;
+    }
+    pos = eol + 1;
+  }
+
+  Serial.printf("[Airlines] Loaded %d entries\n", g_airline_count);
+  return g_airline_count > 0;
+}
+
+// Returns airline name for callsign prefix (e.g. "AAL123" -> "American Airlines"),
+// or nullptr if not a recognised airline flight.
 static const char *airlineLookup(const char *callsign) {
   char prefix[4] = {0, 0, 0, 0};
   int  plen = 0;
@@ -164,13 +86,8 @@ static const char *airlineLookup(const char *callsign) {
     if (callsign[j] >= '0' && callsign[j] <= '9') { hasNum = true; break; }
   if (!hasNum) return nullptr;
 
-  int lo = 0, hi = AIRLINE_TABLE_SIZE - 1;
-  while (lo <= hi) {
-    int mid = (lo + hi) >> 1;
-    int cmp = strcmp(prefix, AIRLINE_TABLE[mid].code);
-    if (cmp == 0) return AIRLINE_TABLE[mid].name;
-    if (cmp < 0)  hi = mid - 1;
-    else          lo = mid + 1;
-  }
+  for (int i = 0; i < g_airline_count; i++)
+    if (strcmp(prefix, g_airlines[i].code) == 0)
+      return g_airlines[i].name;
   return nullptr;
 }

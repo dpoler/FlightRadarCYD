@@ -565,6 +565,8 @@ void setup() {
     dots++;
   }
   showStatus("WiFi connected!");
+  showStatus("Loading airline data...");
+  airlinesLoad();
 
   // NTP
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
