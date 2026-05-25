@@ -202,43 +202,77 @@ static void fcHandleRoot() {
     ">Miles (mi)</option>"
     "</select>"
     "<label>Scan Radius:</label>"
-    "<select name='radius' id='radius'>";
-  if (!fc_use_miles) {
-    int radii[] = { 25, 50, 100, 150, 200, 300 };
-    for (int i = 0; i < 6; i++) {
-      html += "<option value='" + String(radii[i]) + "'";
-      if (radii[i] == fc_radius_km) html += " selected";
-      html += ">" + String(radii[i]) + " km</option>";
+    "<p style='text-align:left;color:#88aacc;font-size:0.85em;margin:2px 0 8px'>"
+    "Inner rings appear at 1/3 and 2/3 of this distance. "
+    "Large values make the display cluttered. "
+    "OpenSky API maximum: 500 km / 310 mi.</p>"
+    "<select name='radius' id='radius_sel' onchange='checkCustom()'>";
+  // Determine whether current saved value matches a preset
+  {
+    int kmRadii[] = { 25, 50, 100 };
+    bool kmMatch = false;
+    for (int i = 0; i < 3; i++) if (kmRadii[i] == fc_radius_km) kmMatch = true;
+
+    int miRadii[] = { 15, 30, 60 };
+    int curMiRound = (int)(fc_radius_km * 0.621371f + 0.5f);
+    int miMatchIdx = -1;
+    for (int i = 0; i < 3; i++) {
+      int d = curMiRound - miRadii[i]; if (d < 0) d = -d;
+      if (d <= 2) { miMatchIdx = i; break; }
     }
-  } else {
-    int miRadii[] = { 15, 30, 60, 100, 125, 200 };
-    float currentMi = fc_radius_km * 0.621371f;
-    int closestIdx = 0;
-    float closestDiff = currentMi - miRadii[0];
-    if (closestDiff < 0) closestDiff = -closestDiff;
-    for (int i = 1; i < 6; i++) {
-      float diff = currentMi - miRadii[i];
-      if (diff < 0) diff = -diff;
-      if (diff < closestDiff) { closestDiff = diff; closestIdx = i; }
+
+    bool showCustom = fc_use_miles ? (miMatchIdx < 0) : !kmMatch;
+    int  customVal  = fc_use_miles ? curMiRound : fc_radius_km;
+
+    if (!fc_use_miles) {
+      for (int i = 0; i < 3; i++) {
+        html += "<option value='" + String(kmRadii[i]) + "'";
+        if (kmRadii[i] == fc_radius_km) html += " selected";
+        html += ">" + String(kmRadii[i]) + " km</option>";
+      }
+    } else {
+      for (int i = 0; i < 3; i++) {
+        html += "<option value='" + String(miRadii[i]) + "'";
+        if (i == miMatchIdx) html += " selected";
+        html += ">" + String(miRadii[i]) + " mi</option>";
+      }
     }
-    for (int i = 0; i < 6; i++) {
-      html += "<option value='" + String(miRadii[i]) + "'";
-      if (i == closestIdx) html += " selected";
-      html += ">" + String(miRadii[i]) + " mi</option>";
-    }
+    html += "<option value='0'";
+    if (showCustom) html += " selected";
+    html += ">Custom...</option>"
+            "</select>"
+            "<div id='custom_div' style='margin-top:8px;display:";
+    html += showCustom ? "block" : "none";
+    html += "'>"
+            "<input type='number' id='radius_custom'"
+            " min='"; html += fc_use_miles ? "15" : "20";
+    html += "' max='"; html += fc_use_miles ? "310" : "500";
+    html += "' value='";
+    if (showCustom) html += String(customVal);
+    html += "' placeholder='Enter value'></div>";
   }
   html +=
-    "</select>"
     "<script>"
     "var kO='<option value=25>25 km</option><option value=50>50 km</option>"
-    "<option value=100>100 km</option><option value=150>150 km</option>"
-    "<option value=200>200 km</option><option value=300>300 km</option>';"
+    "<option value=100>100 km</option><option value=0>Custom...</option>';"
     "var mO='<option value=15>15 mi</option><option value=30>30 mi</option>"
-    "<option value=60>60 mi</option><option value=100>100 mi</option>"
-    "<option value=125>125 mi</option><option value=200>200 mi</option>';"
+    "<option value=60>60 mi</option><option value=0>Custom...</option>';"
     "function swapRadii(){"
-    "document.getElementById('radius').innerHTML="
-    "document.getElementById('units').value==='miles'?mO:kO;}"
+    "var miles=document.getElementById('units').value==='miles';"
+    "document.getElementById('radius_sel').innerHTML=miles?mO:kO;"
+    "var ci=document.getElementById('radius_custom');"
+    "ci.min=miles?15:20;ci.max=miles?310:500;ci.value='';"
+    "checkCustom();}"
+    "function checkCustom(){"
+    "var show=document.getElementById('radius_sel').value==='0';"
+    "document.getElementById('custom_div').style.display=show?'block':'none';"
+    "if(show)document.getElementById('radius_custom').focus();}"
+    "document.forms[0].addEventListener('submit',function(e){"
+    "var sel=document.getElementById('radius_sel');"
+    "if(sel.value==='0'){"
+    "var v=parseInt(document.getElementById('radius_custom').value);"
+    "if(!v||v<1){alert('Please enter a custom radius.');e.preventDefault();return;}"
+    "sel.value=v;}});"
     "</script>"
     "<label>Filter Options:</label>"
     "<label style='font-weight:normal;display:flex;align-items:center;gap:8px'>"
