@@ -80,6 +80,7 @@ static const AirlineEntry AIRLINE_TABLE[] = {
   {"JBU", "JetBlue Airways"},
   {"JIA", "PSA Airlines"},
   {"JRE", "flyExclusive"},
+  {"JSX", "JSX"},
   {"JZA", "Jazz Aviation"},
   {"KAL", "Korean Air"},
   {"KLM", "KLM"},
