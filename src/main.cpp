@@ -411,7 +411,7 @@ static void drawDetail(int idx) {
   snprintf(buf, sizeof(buf), "%.0f%s  %s  hdg %.0f%c",
            fc_use_miles ? f.dist_km * 0.621371f : f.dist_km,
            fc_use_miles ? "mi" : "km",
-           fc_compass(f.bearing), f.track, 176);
+           fc_compass(f.bearing), f.track, 248);
   gfx->print(buf);
 
   // Route (typical — may not reflect today's actual flight)

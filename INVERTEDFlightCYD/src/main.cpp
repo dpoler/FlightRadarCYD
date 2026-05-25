@@ -369,7 +369,7 @@ static void drawDetail(int idx) {
   // Distance + heading
   gfx->setCursor(4, py + 48);
   snprintf(buf, sizeof(buf), "%.0fkm  %s  hdg %.0f%c",
-           f.dist_km, fc_compass(f.bearing), f.track, 176);
+           f.dist_km, fc_compass(f.bearing), f.track, 248);
   gfx->print(buf);
 
   // Dismiss hint
