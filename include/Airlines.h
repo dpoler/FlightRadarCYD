@@ -141,6 +141,7 @@ static const AirlineEntry AIRLINE_TABLE[] = {
   {"VLG", "Vueling"},
   {"VOI", "Volaris"},
   {"VOZ", "Virgin Australia"},
+  {"VTE", "Contour Airlines"},
   {"WJA", "WestJet"},
   {"WUP", "Wheels Up"},
   {"WZZ", "Wizz Air"},
