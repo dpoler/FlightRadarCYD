@@ -40,6 +40,7 @@ static const AirlineEntry AIRLINE_TABLE[] = {
   {"DAL", "Delta Air Lines"},
   {"DLH", "Lufthansa"},
   {"EIN", "Aer Lingus"},
+  {"EJM", "Executive Jet Mgmt"},
   {"ELY", "El Al"},
   {"ENY", "Envoy Air"},
   {"ETD", "Etihad Airways"},

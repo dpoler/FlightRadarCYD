@@ -388,10 +388,8 @@ static void drawDetail(int idx) {
     bool        hasType  = f.ac_type[0]  != '\0';
     bool        hasMaker = f.ac_maker[0] != '\0';
     buf[0] = '\0';
-    if (airline && hasType && hasMaker)
-      snprintf(buf, sizeof(buf), "%s  %s %s", airline, f.ac_maker, f.ac_type);
-    else if (airline && hasType)
-      snprintf(buf, sizeof(buf), "%s  %s", airline, f.ac_type);
+    if (airline && hasType)
+      snprintf(buf, sizeof(buf), "%s  %s", airline, f.ac_type);  // drop maker — keeps line short
     else if (airline)
       strncpy(buf, airline, sizeof(buf) - 1);
     else if (hasType && hasMaker)
