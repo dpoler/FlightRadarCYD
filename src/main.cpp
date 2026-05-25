@@ -103,6 +103,17 @@ static uint16_t acColor(const FlightData &f) {
 static float msToKts(float ms) { return ms * 1.94384f; }
 static float mToFt(float m)    { return m  * 3.28084f; }
 
+// Vertical trend arrow with shaft for the V column.
+static void drawArrowVert(int cx, int cy, bool up, uint16_t color) {
+  if (up) {
+    gfx->fillTriangle(cx, cy-5, cx-3, cy, cx+3, cy, color);
+    gfx->drawFastVLine(cx, cy, 5, color);
+  } else {
+    gfx->fillTriangle(cx, cy+5, cx+3, cy, cx-3, cy, color);
+    gfx->drawFastVLine(cx, cy-5, 5, color);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Header
 // ---------------------------------------------------------------------------
@@ -294,23 +305,19 @@ static void drawListRow(int rowIdx, int dataIdx, bool selected) {
   gfx->setCursor(240, ry + 5);
   gfx->print(fc_compass(f.bearing));
 
-  // Small heading tick "→" approximation using bearing
-  gfx->setTextColor(col);
-  gfx->setCursor(268, ry + 5);
-  const char *arrows[] = { "^", "^>",">" ,"v>","v" ,"v<","<" ,"^<","^" };
-  gfx->print(arrows[(int)((f.track + 22.5f) / 45.0f) % 8]);
+  // Heading indicator: centre dot + direction line snapped to 45° increments
+  static const int8_t hdg_dx[8] = { 0,  5,  6,  5,  0, -5, -6, -5};
+  static const int8_t hdg_dy[8] = {-6, -5,  0,  5,  6,  5,  0, -5};
+  int dir8 = (int)((f.track + 22.5f) / 45.0f) % 8;
+  gfx->fillCircle(280, ry + 8, 2, col);
+  gfx->drawLine(280, ry + 8, 280 + hdg_dx[dir8], ry + 8 + hdg_dy[dir8], col);
 
   // Vertical trend
   if (!f.on_ground && !isnan(f.vert_ms)) {
-    if (f.vert_ms >= 2.0f) {
-      gfx->setTextColor(col);
-      gfx->setCursor(296, ry + 5);
-      gfx->print("^");
-    } else if (f.vert_ms <= -2.0f) {
-      gfx->setTextColor(col);
-      gfx->setCursor(296, ry + 5);
-      gfx->print("v");
-    }
+    if (f.vert_ms >= 2.0f)
+      drawArrowVert(307, ry + 8, true,  col);
+    else if (f.vert_ms <= -2.0f)
+      drawArrowVert(307, ry + 8, false, col);
   }
 }
 
@@ -389,16 +396,14 @@ static void drawDetail(int idx) {
   if (f.on_ground) {
     gfx->print("ON GROUND");
   } else if (!isnan(f.alt_m)) {
-    char trend = ' ';
-    if (!isnan(f.vert_ms)) {
-      if      (f.vert_ms >=  2.0f) trend = '^';
-      else if (f.vert_ms <= -2.0f) trend = 'v';
-    }
-    if (trend != ' ')
-      snprintf(buf, sizeof(buf), "%.0fft  %.0fkn  %c", mToFt(f.alt_m), msToKts(f.vel_ms), trend);
-    else
-      snprintf(buf, sizeof(buf), "%.0fft  %.0fkn", mToFt(f.alt_m), msToKts(f.vel_ms));
+    snprintf(buf, sizeof(buf), "%.0fft  %.0fkn", mToFt(f.alt_m), msToKts(f.vel_ms));
     gfx->print(buf);
+    if (!isnan(f.vert_ms)) {
+      if (f.vert_ms >= 2.0f)
+        drawArrowVert(gfx->getCursorX() + 6, py + 39, true,  RGB565_WHITE);
+      else if (f.vert_ms <= -2.0f)
+        drawArrowVert(gfx->getCursorX() + 6, py + 39, false, RGB565_WHITE);
+    }
   }
 
   // Distance + heading
