@@ -13,6 +13,7 @@
 #include "Portal.h"
 #include "OpenSky.h"
 #include "ADSBDB.h"
+#include "Airlines.h"
 
 // ---------------------------------------------------------------------------
 // Display — CYD ILI9341 320×240 landscape
@@ -378,17 +379,27 @@ static void drawDetail(int idx) {
   gfx->setCursor(4, py + 4);
   gfx->print(f.callsign);
 
-  // Country + ICAO + aircraft type
+  // Airline name + aircraft type
   gfx->setTextColor(COL_DIM);
   gfx->setTextSize(1);
   gfx->setCursor(4, py + 24);
-  if (f.ac_type[0] != '\0' && f.ac_maker[0] != '\0')
-    snprintf(buf, sizeof(buf), "%s [%s]  %s %s", f.country, f.icao, f.ac_maker, f.ac_type);
-  else if (f.ac_type[0] != '\0')
-    snprintf(buf, sizeof(buf), "%s [%s]  %s", f.country, f.icao, f.ac_type);
-  else
-    snprintf(buf, sizeof(buf), "%s [%s]", f.country, f.icao);
-  gfx->print(buf);
+  {
+    const char *airline  = airlineLookup(f.callsign);
+    bool        hasType  = f.ac_type[0]  != '\0';
+    bool        hasMaker = f.ac_maker[0] != '\0';
+    buf[0] = '\0';
+    if (airline && hasType && hasMaker)
+      snprintf(buf, sizeof(buf), "%s  %s %s", airline, f.ac_maker, f.ac_type);
+    else if (airline && hasType)
+      snprintf(buf, sizeof(buf), "%s  %s", airline, f.ac_type);
+    else if (airline)
+      strncpy(buf, airline, sizeof(buf) - 1);
+    else if (hasType && hasMaker)
+      snprintf(buf, sizeof(buf), "%s %s", f.ac_maker, f.ac_type);
+    else if (hasType)
+      strncpy(buf, f.ac_type, sizeof(buf) - 1);
+    if (buf[0]) gfx->print(buf);
+  }
 
   // Altitude + speed + vertical trend
   gfx->setTextColor(RGB565_WHITE);
