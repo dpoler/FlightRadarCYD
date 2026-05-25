@@ -1,9 +1,9 @@
-// FlightCYD - Live Aircraft Radar for CYD (Cheap Yellow Display)
+// FlightRadarCYD - Live Aircraft Radar for CYD (Cheap Yellow Display)
 // Data: OpenSky Network (free, no key) — refreshes every 4 minutes
 // RADAR mode: mini radar showing aircraft positions relative to your location
 // LIST  mode: closest aircraft sorted by distance with detail overlay on tap
 // BOOT button: toggle RADAR ↔ LIST  |  Footer touch zones: same
-// Setup: first boot opens FlightCYD_Setup AP — enter WiFi + lat/lon + radius
+// Setup: first boot opens FlightRadarCYD_Setup AP — enter WiFi + lat/lon + radius
 
 #include <Arduino.h>
 #include <WiFi.h>
@@ -511,7 +511,7 @@ static void handleTouch(int tx, int ty) {
 // ---------------------------------------------------------------------------
 void setup() {
   Serial.begin(115200);
-  Serial.println("FlightCYD - Live Aircraft Radar");
+  Serial.println("FlightRadarCYD - Live Aircraft Radar");
 
   // Display init
   if (!gfx->begin()) Serial.println("gfx->begin() failed!");

@@ -1,4 +1,4 @@
-# ✈️ FlightCYD — Live Aircraft Radar for the ESP32 CYD
+# ✈️ FlightRadarCYD — Live Aircraft Radar for the ESP32 CYD
 
 A live aircraft radar and flight tracker built for the **ESP32 CYD** (Cheap Yellow Display — ILI9341 320×240 touchscreen). Pulls real-time ADS-B flight data from the **OpenSky Network** and displays it two ways: a radar sweep view centered on your location, and a sorted flight list with full details on tap. No API key required.
 
@@ -16,7 +16,7 @@ A live aircraft radar and flight tracker built for the **ESP32 CYD** (Cheap Yell
 
 ## 📡 What It Does
 
-FlightCYD connects to your WiFi, fetches live ADS-B state vectors from OpenSky Network every 4 minutes, and gives you two display modes to explore the airspace around you.
+FlightRadarCYD connects to your WiFi, fetches live ADS-B state vectors from OpenSky Network every 4 minutes, and gives you two display modes to explore the airspace around you.
 
 ### 🟢 RADAR Mode
 - You are at the center crosshair `+`
@@ -54,9 +54,9 @@ FlightCYD connects to your WiFi, fetches live ADS-B state vectors from OpenSky N
 ## ⚙️ Setup
 
 1. Flash the firmware with PlatformIO
-2. On first boot, the device opens a WiFi access point: **`FlightCYD_Setup`**
+2. On first boot, the device opens a WiFi access point: **`FlightRadarCYD_Setup`**
 3. Connect to it and navigate to `192.168.4.1`
-4. Enter your **WiFi credentials**, **latitude**, **longitude**, and **scan radius** (50 / 100 / 150 / 200 / 300 km)
+4. Enter your **WiFi credentials**, **latitude**, **longitude**, and **scan radius** (25 / 50 / 100 km, 15 / 30 / 60 mi, or custom up to 500 km / 310 mi)
 5. Save — device restarts and begins tracking
 
 > **Tip:** Hold the BOOT button on power-up at any time to re-open the setup portal and change your settings.
@@ -85,13 +85,13 @@ FlightCYD connects to your WiFi, fetches live ADS-B state vectors from OpenSky N
 ## 🗂️ Project Structure
 
 ```
-FlightCYD/
+FlightRadarCYD/
 ├── src/
 │   └── main.cpp          # Display modes, touch, BOOT button, radar geometry
 ├── include/
 │   ├── Portal.h          # Captive portal WiFi + location setup (NVS storage)
 │   └── OpenSky.h         # OpenSky API fetch, parse, distance sort
-├── INVERTEDFlightCYD/    # Inverted display variant (black/white swapped)
+├── INVERTEDFlightRadarCYD/    # Inverted display variant (black/white swapped)
 └── platformio.ini
 ```
 
@@ -100,7 +100,7 @@ FlightCYD/
 ## 🔧 Build
 
 ```bash
-cd FlightCYD
+cd FlightRadarCYD
 pio run
 pio run --target upload
 ```
@@ -111,7 +111,7 @@ pio run --target upload
 
 ## 📺 Part of the CYD Desktop Series
 
-FlightCYD is part of a growing collection of always-on desktop displays built for the ESP32 CYD:
+FlightRadarCYD is part of a growing collection of always-on desktop displays built for the ESP32 CYD:
 
 - **HackerCYD** — Live Hacker News comments and top stories
 - **WeatherCore** — NWS forecasts, NOAA space weather, and ISS tracker with 145.800 MHz radio window

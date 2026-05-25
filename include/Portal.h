@@ -97,7 +97,7 @@ static void fcShowPortalScreen() {
   gfx->setTextColor(0x07FF);  // cyan
   gfx->setTextSize(2);
   gfx->setCursor(30, 5);
-  gfx->print("FlightCYD Setup");
+  gfx->print("FlightRadarCYD Setup");
 
   gfx->setTextColor(RGB565_WHITE);
   gfx->setTextSize(1);
@@ -110,7 +110,7 @@ static void fcShowPortalScreen() {
   gfx->setTextColor(0x07FF);
   gfx->setTextSize(2);
   gfx->setCursor(22, 58);
-  gfx->print("FlightCYD_Setup");
+  gfx->print("FlightRadarCYD_Setup");
 
   gfx->setTextColor(0xFFE0);
   gfx->setTextSize(1);
@@ -145,7 +145,7 @@ static void fcHandleRoot() {
     "<!DOCTYPE html><html><head>"
     "<meta charset='UTF-8'>"
     "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-    "<title>FlightCYD Setup</title>"
+    "<title>FlightRadarCYD Setup</title>"
     "<style>"
     "body{background:#000d1a;color:#00ccff;font-family:Arial,sans-serif;"
          "text-align:center;padding:20px;max-width:480px;margin:auto;}"
@@ -162,7 +162,7 @@ static void fcHandleRoot() {
     ".note{color:#445566;font-size:0.82em;margin-top:16px;}"
     "hr{border:1px solid #113355;margin:20px 0;}"
     "</style></head><body>"
-    "<h1>&#9992; FlightCYD Setup</h1>"
+    "<h1>&#9992; FlightRadarCYD Setup</h1>"
     "<p>Live aircraft radar for the CYD display.</p>"
     "<form method='post' action='/save'>"
     "<label>WiFi Network Name (SSID):</label>"
@@ -360,7 +360,7 @@ static void fcHandleSave() {
     "<p>Connecting to <b>" + ssid + "</b>...</p>"
     "<p>Scan radius: <b>" + String(radius_raw) + (use_miles ? " mi" : " km") + "</b></p>"
     "<p>Refresh: <b>" + (client_id.length() > 0 ? "30 sec (authenticated)" : "4 min (anonymous)") + "</b></p>"
-    "<p>You can close this page and disconnect from <b>FlightCYD_Setup</b>.</p>"
+    "<p>You can close this page and disconnect from <b>FlightRadarCYD_Setup</b>.</p>"
     "</body></html>");
 
   delay(1500);
@@ -375,7 +375,7 @@ static void fcHandleNoChange() {
     "</head><body>"
     "<h2>&#128077; No Changes</h2>"
     "<p>Using saved settings. Device is connecting now.</p>"
-    "<p>You can close this page and disconnect from <b>FlightCYD_Setup</b>.</p>"
+    "<p>You can close this page and disconnect from <b>FlightRadarCYD_Setup</b>.</p>"
     "</body></html>");
   delay(1500);
   portalDone = true;
@@ -386,7 +386,7 @@ static void fcHandleNoChange() {
 // ---------------------------------------------------------------------------
 static void fcInitPortal() {
   WiFi.mode(WIFI_AP);
-  WiFi.softAP("FlightCYD_Setup", "");
+  WiFi.softAP("FlightRadarCYD_Setup", "");
   delay(500);
 
   portalDNS    = new DNSServer();
@@ -401,7 +401,7 @@ static void fcInitPortal() {
   portalDone = false;
 
   fcShowPortalScreen();
-  Serial.printf("[Portal] AP up — connect to FlightCYD_Setup, open %s\n",
+  Serial.printf("[Portal] AP up — connect to FlightRadarCYD_Setup, open %s\n",
                 WiFi.softAPIP().toString().c_str());
 }
 

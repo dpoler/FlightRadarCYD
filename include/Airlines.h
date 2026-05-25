@@ -5,7 +5,7 @@
 #include <string.h>
 
 #define AIRLINES_URL \
-  "https://raw.githubusercontent.com/dpoler/Flight-CYD-ESP32-Radar/main/airlines.csv"
+  "https://raw.githubusercontent.com/dpoler/FlightRadarCYD/main/airlines.csv"
 #define AIRLINES_MAX 400
 
 struct AirlineEntry { char code[4]; char name[26]; };

@@ -1,4 +1,4 @@
-# FlightCYD airline lookup — ICAO code, Airline name
+# FlightRadarCYD airline lookup — ICAO code, Airline name
 # Edit this file directly on GitHub; changes take effect on next device boot (no re-flash needed).
 # Format: ICAO,Name   (lines starting with # are ignored)
 AAL,American Airlines
