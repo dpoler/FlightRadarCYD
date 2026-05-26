@@ -8,7 +8,7 @@ A live aircraft radar and flight tracker built for the **ESP32 CYD** (Cheap Yell
 
 | RADAR Mode | LIST Mode | DETAIL display |
 |:---:|:---:|:---:|
-| ![Radar](RadarDisplay.png) | ![List](ListDisplay.png) | ![Detail](DetailDisplay.png)
+| ![Radar](RadarDisplay.png) | ![List](ListDisplay.png) | ![Detail](DetailDisplay.png) |
 
 *Shows real flights detected including SWA2864, SWA3168, and N804HS*
 
@@ -79,7 +79,7 @@ FlightRadarCYD connects to your WiFi, fetches live ADS-B state vectors from Open
 
 ---
 
-## 📦 Data Source
+## 📦 Data Sources
 
 | Source | Endpoint | Auth |
 |---|---|---|
@@ -120,7 +120,7 @@ pio run
 pio run --target upload
 ```
 
-## Known Limitations
+## ⚠️ Known Limitations
 
 - The thing's got a tiny display. Other alternatives exist for fonts but none of them are wonderful. 
 - I had originally included origin and destination info for flights, as ADSBDB does have this, but it's historical and wildly inaccurate. I can't find a good (free) source of origin/destination info, if you find one, please let me know.
