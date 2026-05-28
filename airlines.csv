@@ -71,6 +71,7 @@ GEC,Lufthansa Cargo
 GFA,Gulf Air
 GJS,GoJet Airlines
 GLO,GOL Airlines
+GLT,Aero Charter
 GTI,Atlas Air
 HAL,Hawaiian Airlines
 HVN,Vietnam Airlines
@@ -86,6 +87,7 @@ JSX,JSX
 JZA,Jazz Aviation
 KAL,Korean Air
 KLM,KLM
+KOW,Baker Aviation
 KQA,Kenya Airways
 LAN,LATAM Airlines
 LOT,LOT Polish Airlines
@@ -106,6 +108,7 @@ PCH,Pilatus Aircraft
 PDT,Piedmont Airlines
 PGT,Pegasus Airlines
 PRE,Precision Airlines
+PWR,Quanta Aviation Svcs
 QFA,Qantas
 QTR,Qatar Airways
 QXE,Horizon Air
@@ -150,4 +153,6 @@ VOZ,Virgin Australia
 VTE,Contour Airlines
 WJA,WestJet
 WUP,Wheels Up
+WWG,Aereo WWG
 WZZ,Wizz Air
+XSR,Airshare
