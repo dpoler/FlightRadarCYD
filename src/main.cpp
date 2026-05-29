@@ -332,32 +332,35 @@ static void drawRadar() {
 static void drawStats() {
   gfx->fillRect(0, CONTENT_Y, 320, CONTENT_H, 0x0000);
   gfx->setTextSize(1);
-  char buf[32];
+  char buf[48];
 
-  // — Counts section —
-  gfx->setTextColor(COL_DIM);
-  gfx->setCursor(4, CONTENT_Y + 8);
+  // — TODAY section —
+  gfx->setTextColor(COL_TITLE);
+  gfx->setCursor(4, CONTENT_Y + 6);
   gfx->print("TODAY");
-  gfx->drawFastHLine(0, CONTENT_Y + 18, 320, COL_GRID);
+  gfx->drawFastHLine(0, CONTENT_Y + 16, 320, COL_GRID);
 
-  auto printRow = [&](int y, const char *label, const char *value, uint16_t valColor) {
+  // Label (size 1) left + large count (size 2) right-aligned on same row
+  auto printBigRow = [&](int y, const char *label, int value) {
+    gfx->setTextSize(1);
     gfx->setTextColor(COL_DIM);
-    gfx->setCursor(4, y);
+    gfx->setCursor(4, y + 4);   // nudge down to vertically center against size-2 number
     gfx->print(label);
-    gfx->setTextColor(valColor);
-    gfx->setCursor(320 - (int)strlen(value) * 6 - 4, y);
-    gfx->print(value);
+    snprintf(buf, sizeof(buf), "%d", value);
+    gfx->setTextSize(2);
+    gfx->setTextColor(COL_TITLE);
+    gfx->setCursor(320 - (int)strlen(buf) * 12 - 4, y);
+    gfx->print(buf);
+    gfx->setTextSize(1);
   };
 
-  snprintf(buf, sizeof(buf), "%d", stats_unique_count);
-  printRow(CONTENT_Y + 28, "Unique aircraft", buf, COL_TITLE);
-  snprintf(buf, sizeof(buf), "%d", stats_fetch_count);
-  printRow(CONTENT_Y + 40, "Data fetches",    buf, COL_TITLE);
+  printBigRow(CONTENT_Y + 22, "Unique aircraft", stats_unique_count);
+  printBigRow(CONTENT_Y + 42, "Data fetches",    stats_fetch_count);
 
-  // — Records section —
-  gfx->drawFastHLine(0, CONTENT_Y + 54, 320, COL_GRID);
-  gfx->setTextColor(COL_DIM);
-  gfx->setCursor(4, CONTENT_Y + 60);
+  // — RECORDS section —
+  gfx->drawFastHLine(0, CONTENT_Y + 62, 320, COL_GRID);
+  gfx->setTextColor(COL_TITLE);
+  gfx->setCursor(4, CONTENT_Y + 68);
   gfx->print("RECORDS");
 
   auto printRecord = [&](int y, const char *label, const char *cs, const char *value) {
@@ -382,19 +385,19 @@ static void drawStats() {
     float d = fc_use_miles ? stats_closest_dist * 0.621371f : stats_closest_dist;
     snprintf(buf, sizeof(buf), "%.1f %s", d, fc_use_miles ? "mi" : "km");
   }
-  printRecord(CONTENT_Y + 72, "Closest", stats_closest_cs, buf);
+  printRecord(CONTENT_Y + 80, "Closest", stats_closest_cs, buf);
 
   if (stats_highest_cs[0])
     snprintf(buf, sizeof(buf), "%d ft", (int)mToFt(stats_highest_alt));
-  printRecord(CONTENT_Y + 86, "Highest", stats_highest_cs, buf);
+  printRecord(CONTENT_Y + 94, "Highest", stats_highest_cs, buf);
 
   if (stats_fastest_cs[0])
     snprintf(buf, sizeof(buf), "%d kts", (int)msToKts(stats_fastest_spd));
-  printRecord(CONTENT_Y + 100, "Fastest", stats_fastest_cs, buf);
+  printRecord(CONTENT_Y + 108, "Fastest", stats_fastest_cs, buf);
 
   // — Footer note —
-  const char *note = "Resets daily at local midnight";
-  gfx->setTextColor(COL_GRID);
+  const char *note = "Resets daily at local midnight or on power cycle";
+  gfx->setTextColor(0x4208);
   gfx->setCursor(320 - (int)strlen(note) * 6 - 4, CONTENT_Y + CONTENT_H - 12);
   gfx->print(note);
 }
