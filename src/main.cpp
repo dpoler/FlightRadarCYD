@@ -77,8 +77,7 @@ static unsigned long lastTouchTime = 0;
 static int  fc_mode         = MODE_RADAR;
 static int  fc_detail_idx   = -1;          // -1 = no detail overlay
 static unsigned long fc_last_fetch = 0;
-static bool fc_fetch_ok     = false;
-static char fc_last_time[10] = "--:--";    // UTC HH:MM of last successful fetch
+static bool fc_fetch_ok = false;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -134,9 +133,15 @@ static void drawHeader() {
   gfx->setCursor(130, 6);
   gfx->print(buf);
 
-  // Last update time
+  // Last update — elapsed minutes since last successful fetch
   gfx->setTextColor(COL_DIM);
-  snprintf(buf, sizeof(buf), "upd %s UTC", fc_last_time);
+  if (fc_last_fetch == 0) {
+    snprintf(buf, sizeof(buf), "upd --");
+  } else {
+    int mins = (int)((millis() - fc_last_fetch) / 60000UL);
+    if (mins == 0) snprintf(buf, sizeof(buf), "upd <1m ago");
+    else           snprintf(buf, sizeof(buf), "upd %dm ago", mins);
+  }
   int tw = strlen(buf) * 6;
   gfx->setCursor(320 - tw - 4, 6);
   gfx->print(buf);
@@ -456,9 +461,6 @@ static void doFetch() {
     fc_flight_count = n;
   }
 
-  // Update time stamp
-  struct tm t;
-  if (getLocalTime(&t)) strftime(fc_last_time, sizeof(fc_last_time), "%H:%M", &t);
 
   fc_last_fetch = millis();
   fc_detail_idx = -1;
@@ -568,8 +570,10 @@ void setup() {
   showStatus("Loading airline data...");
   airlinesLoad();
 
-  // NTP
+  // NTP — gmtOffset/daylightOffset left 0; POSIX TZ string drives local time
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+  setenv("TZ", fc_tz_posix, 1);
+  tzset();
   delay(600);
 
   // Draw initial shell so display isn't blank while waiting
