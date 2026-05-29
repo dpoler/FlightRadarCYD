@@ -72,12 +72,27 @@ static unsigned long lastTouchTime = 0;
 // App state
 // ---------------------------------------------------------------------------
 #define MODE_RADAR 0
-#define MODE_LIST  1
+#define MODE_STATS 1
+#define MODE_LIST  2
+#define MAX_SEEN   500
 
 static int  fc_mode         = MODE_RADAR;
 static int  fc_detail_idx   = -1;          // -1 = no detail overlay
 static unsigned long fc_last_fetch = 0;
 static bool fc_fetch_ok = false;
+
+// Daily stats — reset at local midnight
+static int   stats_unique_count   = 0;
+static int   stats_fetch_count    = 0;
+static float stats_closest_dist   = 1e9f;
+static char  stats_closest_cs[10] = "";
+static float stats_highest_alt    = -1e9f;
+static char  stats_highest_cs[10] = "";
+static float stats_fastest_spd    = -1e9f;
+static char  stats_fastest_cs[10] = "";
+static char  stats_seen_icao[MAX_SEEN][7];
+static int   stats_seen_count     = 0;
+static int   stats_last_day       = -1;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -154,20 +169,77 @@ static void drawFooter() {
   int fy = 240 - FOOTER_H;
   gfx->fillRect(0, fy, 320, FOOTER_H, COL_FOOTER_BG);
   gfx->drawFastHLine(0, fy, 320, 0x2104);
-  gfx->drawFastVLine(160, fy, FOOTER_H, 0x2104);
+  gfx->drawFastVLine(107, fy, FOOTER_H, 0x2104);
+  gfx->drawFastVLine(214, fy, FOOTER_H, 0x2104);
 
-  // Left zone — RADAR
-  uint16_t lc = (fc_mode == MODE_RADAR) ? COL_TITLE : COL_DIM;
-  gfx->setTextColor(lc);
   gfx->setTextSize(1);
-  gfx->setCursor(44, fy + 6);
+
+  gfx->setTextColor(fc_mode == MODE_RADAR ? COL_TITLE : COL_DIM);
+  gfx->setCursor(26,  fy + 6);
   gfx->print(fc_mode == MODE_RADAR ? "[O] RADAR" : " O  RADAR");
 
-  // Right zone — LIST
-  uint16_t rc = (fc_mode == MODE_LIST) ? COL_TITLE : COL_DIM;
-  gfx->setTextColor(rc);
-  gfx->setCursor(188, fy + 6);
-  gfx->print(fc_mode == MODE_LIST ? "[=] LIST" : " =  LIST");
+  gfx->setTextColor(fc_mode == MODE_STATS ? COL_TITLE : COL_DIM);
+  gfx->setCursor(133, fy + 6);
+  gfx->print(fc_mode == MODE_STATS ? "[#] STATS" : " #  STATS");
+
+  gfx->setTextColor(fc_mode == MODE_LIST  ? COL_TITLE : COL_DIM);
+  gfx->setCursor(243, fy + 6);
+  gfx->print(fc_mode == MODE_LIST  ? "[=] LIST"  : " =  LIST");
+}
+
+// ---------------------------------------------------------------------------
+// Daily stats helpers
+// ---------------------------------------------------------------------------
+static void checkDailyReset() {
+  static unsigned long lastCheck = 0;
+  if (millis() - lastCheck < 60000) return;
+  lastCheck = millis();
+
+  struct tm local_tm;
+  if (!getLocalTime(&local_tm, 0)) return;
+
+  if (stats_last_day < 0) { stats_last_day = local_tm.tm_yday; return; }
+  if (local_tm.tm_yday == stats_last_day) return;
+
+  stats_last_day      = local_tm.tm_yday;
+  stats_unique_count  = 0;
+  stats_fetch_count   = 0;
+  stats_closest_dist  = 1e9f;  stats_closest_cs[0] = '\0';
+  stats_highest_alt   = -1e9f; stats_highest_cs[0] = '\0';
+  stats_fastest_spd   = -1e9f; stats_fastest_cs[0] = '\0';
+  stats_seen_count    = 0;
+}
+
+static void updateStats() {
+  stats_fetch_count++;
+  for (int i = 0; i < fc_flight_count; i++) {
+    const FlightData &f = fc_flights[i];
+    const char *cs = f.callsign[0] ? f.callsign : f.icao;
+
+    // Track unique aircraft by ICAO
+    bool seen = false;
+    for (int j = 0; j < stats_seen_count; j++)
+      if (strcmp(stats_seen_icao[j], f.icao) == 0) { seen = true; break; }
+    if (!seen && stats_seen_count < MAX_SEEN) {
+      strncpy(stats_seen_icao[stats_seen_count++], f.icao, 6);
+      stats_seen_icao[stats_seen_count - 1][6] = '\0';
+      stats_unique_count++;
+    }
+
+    // Records
+    if (f.dist_km < stats_closest_dist) {
+      stats_closest_dist = f.dist_km;
+      strncpy(stats_closest_cs, cs, sizeof(stats_closest_cs) - 1);
+    }
+    if (!f.on_ground && !isnan(f.alt_m) && f.alt_m > stats_highest_alt) {
+      stats_highest_alt = f.alt_m;
+      strncpy(stats_highest_cs, cs, sizeof(stats_highest_cs) - 1);
+    }
+    if (!f.on_ground && !isnan(f.vel_ms) && f.vel_ms > stats_fastest_spd) {
+      stats_fastest_spd = f.vel_ms;
+      strncpy(stats_fastest_cs, cs, sizeof(stats_fastest_cs) - 1);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -252,6 +324,79 @@ static void drawRadar() {
     gfx->setCursor(90, cy - 5);
     gfx->print("No aircraft found");
   }
+}
+
+// ---------------------------------------------------------------------------
+// STATS display
+// ---------------------------------------------------------------------------
+static void drawStats() {
+  gfx->fillRect(0, CONTENT_Y, 320, CONTENT_H, 0x0000);
+  gfx->setTextSize(1);
+  char buf[32];
+
+  // — Counts section —
+  gfx->setTextColor(COL_DIM);
+  gfx->setCursor(4, CONTENT_Y + 8);
+  gfx->print("TODAY");
+  gfx->drawFastHLine(0, CONTENT_Y + 18, 320, COL_GRID);
+
+  auto printRow = [&](int y, const char *label, const char *value, uint16_t valColor) {
+    gfx->setTextColor(COL_DIM);
+    gfx->setCursor(4, y);
+    gfx->print(label);
+    gfx->setTextColor(valColor);
+    gfx->setCursor(320 - (int)strlen(value) * 6 - 4, y);
+    gfx->print(value);
+  };
+
+  snprintf(buf, sizeof(buf), "%d", stats_unique_count);
+  printRow(CONTENT_Y + 28, "Unique aircraft", buf, COL_TITLE);
+  snprintf(buf, sizeof(buf), "%d", stats_fetch_count);
+  printRow(CONTENT_Y + 40, "Data fetches",    buf, COL_TITLE);
+
+  // — Records section —
+  gfx->drawFastHLine(0, CONTENT_Y + 54, 320, COL_GRID);
+  gfx->setTextColor(COL_DIM);
+  gfx->setCursor(4, CONTENT_Y + 60);
+  gfx->print("RECORDS");
+
+  auto printRecord = [&](int y, const char *label, const char *cs, const char *value) {
+    gfx->setTextColor(COL_DIM);
+    gfx->setCursor(4, y);
+    gfx->print(label);
+    if (cs && cs[0]) {
+      gfx->setTextColor(COL_AC_HIGH);
+      gfx->setCursor(76, y);
+      gfx->print(cs);
+      gfx->setTextColor(COL_TITLE);
+      gfx->setCursor(320 - (int)strlen(value) * 6 - 4, y);
+      gfx->print(value);
+    } else {
+      gfx->setTextColor(COL_DIM);
+      gfx->setCursor(76, y);
+      gfx->print("--");
+    }
+  };
+
+  if (stats_closest_cs[0]) {
+    float d = fc_use_miles ? stats_closest_dist * 0.621371f : stats_closest_dist;
+    snprintf(buf, sizeof(buf), "%.1f %s", d, fc_use_miles ? "mi" : "km");
+  }
+  printRecord(CONTENT_Y + 72, "Closest", stats_closest_cs, buf);
+
+  if (stats_highest_cs[0])
+    snprintf(buf, sizeof(buf), "%d ft", (int)mToFt(stats_highest_alt));
+  printRecord(CONTENT_Y + 86, "Highest", stats_highest_cs, buf);
+
+  if (stats_fastest_cs[0])
+    snprintf(buf, sizeof(buf), "%d kts", (int)msToKts(stats_fastest_spd));
+  printRecord(CONTENT_Y + 100, "Fastest", stats_fastest_cs, buf);
+
+  // — Footer note —
+  const char *note = "Resets daily at local midnight";
+  gfx->setTextColor(COL_GRID);
+  gfx->setCursor(320 - (int)strlen(note) * 6 - 4, CONTENT_Y + CONTENT_H - 12);
+  gfx->print(note);
 }
 
 // ---------------------------------------------------------------------------
@@ -439,8 +584,9 @@ static void drawDetail(int idx) {
 // ---------------------------------------------------------------------------
 static void redraw() {
   drawHeader();
-  if (fc_mode == MODE_RADAR) drawRadar();
-  else                       drawList();
+  if      (fc_mode == MODE_RADAR) drawRadar();
+  else if (fc_mode == MODE_STATS) drawStats();
+  else                            drawList();
   drawFooter();
   if (fc_mode == MODE_LIST && fc_detail_idx >= 0) drawDetail(fc_detail_idx);
 }
@@ -462,6 +608,7 @@ static void doFetch() {
   }
 
 
+  updateStats();
   fc_last_fetch = millis();
   fc_detail_idx = -1;
   redraw();
@@ -475,7 +622,7 @@ static void handleTouch(int tx, int ty) {
 
   // Footer: switch modes
   if (ty >= footerY) {
-    int newMode = (tx < 160) ? MODE_RADAR : MODE_LIST;
+    int newMode = (tx < 107) ? MODE_RADAR : (tx < 214) ? MODE_STATS : MODE_LIST;
     if (newMode != fc_mode) {
       fc_mode       = newMode;
       fc_detail_idx = -1;
@@ -578,8 +725,9 @@ void setup() {
 
   // Draw initial shell so display isn't blank while waiting
   drawHeader();
-  if (fc_mode == MODE_RADAR) drawRadar();
-  else                       drawList();
+  if      (fc_mode == MODE_RADAR) drawRadar();
+  else if (fc_mode == MODE_STATS) drawStats();
+  else                            drawList();
   drawFooter();
 }
 
@@ -587,11 +735,13 @@ void setup() {
 // loop()
 // ---------------------------------------------------------------------------
 void loop() {
-  // BOOT button: toggle RADAR ↔ LIST
+  checkDailyReset();
+
+  // BOOT button: cycle RADAR → STATS → LIST → RADAR
   if (digitalRead(0) == LOW) {
     delay(50);
     if (digitalRead(0) == LOW) {
-      fc_mode = (fc_mode == MODE_RADAR) ? MODE_LIST : MODE_RADAR;
+      fc_mode = (fc_mode + 1) % 3;
       fc_detail_idx = -1;
       redraw();
       while (digitalRead(0) == LOW) delay(10);
