@@ -8,7 +8,7 @@ A live aircraft radar and flight tracker built for the **ESP32 CYD** (Cheap Yell
 
 | RADAR Mode | LIST Mode | DETAIL display | STATS Mode |
 |:---:|:---:|:---:|:---:|
-| ![Radar](RadarDisplay.png) | ![List](ListDisplay.png) | ![Detail](DetailDisplay.png) | *(screenshot coming)* |
+| ![Radar](RadarDisplay.png) | ![List](ListDisplay.png) | ![Detail](DetailDisplay.png) | ![Stats](StatsDisplay.png) |
 
 *Shows real flights detected including SWA2864, SWA3168, and N804HS*
 
