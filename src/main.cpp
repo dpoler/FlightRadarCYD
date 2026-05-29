@@ -81,18 +81,38 @@ static int  fc_detail_idx   = -1;          // -1 = no detail overlay
 static unsigned long fc_last_fetch = 0;
 static bool fc_fetch_ok = false;
 
+// Per-record bundle: callsign, ICAO (for type lookup), cached type, time seen
+struct StatRecord {
+  char  cs[10];
+  char  icao[8];
+  char  ac_type[12];
+  char  hhmm[6];          // "HH:MM\0"
+  float bearing;          // bearing from user at time of record
+  bool  type_attempted;   // true once adsbdb has been queried for this ICAO
+};
+
 // Daily stats — reset at local midnight
-static int   stats_unique_count   = 0;
-static int   stats_fetch_count    = 0;
-static float stats_closest_dist   = 1e9f;
-static char  stats_closest_cs[10] = "";
-static float stats_highest_alt    = -1e9f;
-static char  stats_highest_cs[10] = "";
-static float stats_fastest_spd    = -1e9f;
-static char  stats_fastest_cs[10] = "";
-static char  stats_seen_icao[MAX_SEEN][7];
-static int   stats_seen_count     = 0;
-static int   stats_last_day       = -1;
+static int        stats_unique_count = 0;
+static int        stats_fetch_count  = 0;
+static int        stats_peak_count   = 0;
+static char       stats_peak_hhmm[6] = {};
+static float      stats_closest_dist = 1e9f;
+static StatRecord stats_closest      = {};
+static float      stats_highest_alt  = -1e9f;
+static StatRecord stats_highest      = {};
+static float      stats_fastest_spd  = -1e9f;
+static StatRecord stats_fastest      = {};
+static float      stats_climb_rate   = -1e9f;   // strongest positive vert_ms
+static StatRecord stats_climb        = {};
+static float      stats_desc_rate    =  1e9f;   // most negative vert_ms
+static StatRecord stats_desc         = {};
+static bool         stats_types_pending  = false;
+static bool         stats_fetching_types = false;
+static volatile bool stats_type_arrived  = false; // set by task each time a type is written
+static char         stats_seen_icao[MAX_SEEN][7];
+static int          stats_seen_count   = 0;
+static int          stats_last_day     = -1;
+static TaskHandle_t hTypeTask          = NULL;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -114,9 +134,39 @@ static uint16_t acColor(const FlightData &f) {
   return COL_AC_HIGH;
 }
 
-// Convert m/s → knots and m → feet
+// Convert m/s → knots, m → feet, m/s → feet-per-minute
 static float msToKts(float ms) { return ms * 1.94384f; }
 static float mToFt(float m)    { return m  * 3.28084f; }
+static float msToFpm(float ms) { return ms * 196.85f; }
+
+// Capture current local time as "HH:MM" into a 6-byte buffer
+static void captureTime(char *hhmm6) {
+  struct tm t;
+  if (getLocalTime(&t, 0)) snprintf(hhmm6, 6, "%02d:%02d", t.tm_hour, t.tm_min);
+  else hhmm6[0] = '\0';
+}
+
+// New aircraft takes a record — clear type cache so it gets looked up
+static void setRecord(StatRecord &r, const FlightData &f) {
+  const char *cs = f.callsign[0] ? f.callsign : f.icao;
+  strncpy(r.cs,   cs,     sizeof(r.cs)   - 1); r.cs[sizeof(r.cs)-1]     = '\0';
+  strncpy(r.icao, f.icao, sizeof(r.icao) - 1); r.icao[sizeof(r.icao)-1] = '\0';
+  r.ac_type[0]     = '\0';
+  r.bearing        = f.bearing;
+  r.type_attempted = false;
+  captureTime(r.hhmm);
+  stats_types_pending  = true;
+  stats_fetching_types = true;  // fetch immediately if on stats, else on next entry
+}
+
+// Same aircraft extends its own record — preserve the cached type
+static void refreshRecord(StatRecord &r, const FlightData &f) {
+  const char *cs = f.callsign[0] ? f.callsign : f.icao;
+  strncpy(r.cs, cs, sizeof(r.cs) - 1); r.cs[sizeof(r.cs)-1] = '\0';
+  r.bearing = f.bearing;
+  captureTime(r.hhmm);
+  // icao, ac_type, type_attempted intentionally unchanged
+}
 
 // Vertical trend arrow with shaft for the V column.
 static void drawArrowVert(int cx, int cy, bool up, uint16_t color) {
@@ -201,22 +251,37 @@ static void checkDailyReset() {
   if (stats_last_day < 0) { stats_last_day = local_tm.tm_yday; return; }
   if (local_tm.tm_yday == stats_last_day) return;
 
-  stats_last_day      = local_tm.tm_yday;
-  stats_unique_count  = 0;
-  stats_fetch_count   = 0;
-  stats_closest_dist  = 1e9f;  stats_closest_cs[0] = '\0';
-  stats_highest_alt   = -1e9f; stats_highest_cs[0] = '\0';
-  stats_fastest_spd   = -1e9f; stats_fastest_cs[0] = '\0';
-  stats_seen_count    = 0;
+  // Stop any in-flight type lookup before clearing records
+  if (hTypeTask) { vTaskDelete(hTypeTask); hTypeTask = NULL; }
+
+  stats_last_day       = local_tm.tm_yday;
+  stats_unique_count   = 0;
+  stats_fetch_count    = 0;
+  stats_peak_count     = 0;     stats_peak_hhmm[0]  = '\0';
+  stats_closest_dist   = 1e9f;  stats_closest = {};
+  stats_highest_alt    = -1e9f; stats_highest = {};
+  stats_fastest_spd    = -1e9f; stats_fastest = {};
+  stats_climb_rate     = -1e9f; stats_climb   = {};
+  stats_desc_rate      =  1e9f; stats_desc    = {};
+  stats_types_pending  = false;
+  stats_fetching_types = false;
+  stats_type_arrived   = false;
+  stats_seen_count     = 0;
 }
 
 static void updateStats() {
   stats_fetch_count++;
+
+  // Peak simultaneous aircraft
+  if (fc_flight_count > stats_peak_count) {
+    stats_peak_count = fc_flight_count;
+    captureTime(stats_peak_hhmm);
+  }
+
   for (int i = 0; i < fc_flight_count; i++) {
     const FlightData &f = fc_flights[i];
-    const char *cs = f.callsign[0] ? f.callsign : f.icao;
 
-    // Track unique aircraft by ICAO
+    // Unique ICAO tracking
     bool seen = false;
     for (int j = 0; j < stats_seen_count; j++)
       if (strcmp(stats_seen_icao[j], f.icao) == 0) { seen = true; break; }
@@ -226,20 +291,58 @@ static void updateStats() {
       stats_unique_count++;
     }
 
-    // Records
-    if (f.dist_km < stats_closest_dist) {
-      stats_closest_dist = f.dist_km;
-      strncpy(stats_closest_cs, cs, sizeof(stats_closest_cs) - 1);
+    // Records — use refreshRecord when same aircraft extends its own record
+    #define UPDATE_RECORD(cmp, val, rec, field) \
+      if (cmp) { field = val; \
+        if (strcmp(rec.icao, f.icao) == 0) refreshRecord(rec, f); \
+        else setRecord(rec, f); }
+
+    UPDATE_RECORD(f.dist_km < stats_closest_dist,
+                  f.dist_km, stats_closest, stats_closest_dist)
+    if (!f.on_ground && !isnan(f.alt_m))
+      UPDATE_RECORD(f.alt_m > stats_highest_alt,
+                    f.alt_m, stats_highest, stats_highest_alt)
+    if (!f.on_ground && !isnan(f.vel_ms))
+      UPDATE_RECORD(f.vel_ms > stats_fastest_spd,
+                    f.vel_ms, stats_fastest, stats_fastest_spd)
+    if (!f.on_ground && !isnan(f.vert_ms)) {
+      UPDATE_RECORD(f.vert_ms > stats_climb_rate,
+                    f.vert_ms, stats_climb, stats_climb_rate)
+      UPDATE_RECORD(f.vert_ms < stats_desc_rate,
+                    f.vert_ms, stats_desc,  stats_desc_rate)
     }
-    if (!f.on_ground && !isnan(f.alt_m) && f.alt_m > stats_highest_alt) {
-      stats_highest_alt = f.alt_m;
-      strncpy(stats_highest_cs, cs, sizeof(stats_highest_cs) - 1);
-    }
-    if (!f.on_ground && !isnan(f.vel_ms) && f.vel_ms > stats_fastest_spd) {
-      stats_fastest_spd = f.vel_ms;
-      strncpy(stats_fastest_cs, cs, sizeof(stats_fastest_cs) - 1);
+    #undef UPDATE_RECORD
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Background type lookup — runs on core 0 so loop() on core 1 stays responsive
+// ---------------------------------------------------------------------------
+
+static void typesFetchTaskFn(void *) {
+  StatRecord *recs[] = { &stats_closest, &stats_highest, &stats_fastest,
+                         &stats_climb,   &stats_desc };
+  for (auto *r : recs) {
+    if (!stats_types_pending) break;  // aborted by daily reset
+    if (r->icao[0] && !r->type_attempted) {
+      r->type_attempted = true;
+      FlightData tmp = {};
+      strncpy(tmp.icao, r->icao, sizeof(tmp.icao) - 1);
+      adsbdbFetchType(tmp, 3000);
+      strncpy(r->ac_type, tmp.ac_type, sizeof(r->ac_type) - 1);
+      stats_type_arrived = true;  // signal one redraw per type
     }
   }
+  stats_types_pending  = false;
+  stats_fetching_types = false;
+  stats_type_arrived   = true;  // final redraw to clear spinner / show complete state
+  hTypeTask = NULL;
+  vTaskDelete(NULL);
+}
+
+static void startTypesFetch() {
+  if (hTypeTask || !stats_types_pending) return;
+  xTaskCreatePinnedToCore(typesFetchTaskFn, "typeFetch", 8192, NULL, 1, &hTypeTask, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -332,7 +435,7 @@ static void drawRadar() {
 static void drawStats() {
   gfx->fillRect(0, CONTENT_Y, 320, CONTENT_H, 0x0000);
   gfx->setTextSize(1);
-  char buf[48];
+  char buf[32];
 
   // — TODAY section —
   gfx->setTextColor(COL_TITLE);
@@ -340,11 +443,11 @@ static void drawStats() {
   gfx->print("TODAY");
   gfx->drawFastHLine(0, CONTENT_Y + 16, 320, COL_GRID);
 
-  // Label (size 1) left + large count (size 2) right-aligned on same row
+  // Label (size 1) left, large count (size 2) right-aligned
   auto printBigRow = [&](int y, const char *label, int value) {
     gfx->setTextSize(1);
     gfx->setTextColor(COL_DIM);
-    gfx->setCursor(4, y + 4);   // nudge down to vertically center against size-2 number
+    gfx->setCursor(4, y + 4);
     gfx->print(label);
     snprintf(buf, sizeof(buf), "%d", value);
     gfx->setTextSize(2);
@@ -363,37 +466,81 @@ static void drawStats() {
   gfx->setCursor(4, CONTENT_Y + 68);
   gfx->print("RECORDS");
 
-  auto printRecord = [&](int y, const char *label, const char *cs, const char *value) {
+  // Columns: label x=4 | callsign x=52 | type x=112 | value+dir right@276 | time x=286
+  auto printRecord = [&](int y, const char *label, const StatRecord &r, const char *value) {
     gfx->setTextColor(COL_DIM);
     gfx->setCursor(4, y);
     gfx->print(label);
-    if (cs && cs[0]) {
+    if (r.cs[0]) {
       gfx->setTextColor(COL_AC_HIGH);
-      gfx->setCursor(76, y);
-      gfx->print(cs);
+      gfx->setCursor(60, y);
+      gfx->print(r.cs);
+      if (r.ac_type[0]) {
+        gfx->setTextColor(COL_DIM);
+        gfx->setCursor(120, y);
+        gfx->print(r.ac_type);
+      }
       gfx->setTextColor(COL_TITLE);
-      gfx->setCursor(320 - (int)strlen(value) * 6 - 4, y);
+      gfx->setCursor(276 - (int)strlen(value) * 6, y);
       gfx->print(value);
+      if (r.hhmm[0]) {
+        gfx->setTextColor(COL_DIM);
+        gfx->setCursor(286, y);
+        gfx->print(r.hhmm);
+      }
     } else {
       gfx->setTextColor(COL_DIM);
-      gfx->setCursor(76, y);
+      gfx->setCursor(60, y);
       gfx->print("--");
     }
   };
 
-  if (stats_closest_cs[0]) {
+  if (stats_closest.cs[0]) {
     float d = fc_use_miles ? stats_closest_dist * 0.621371f : stats_closest_dist;
-    snprintf(buf, sizeof(buf), "%.1f %s", d, fc_use_miles ? "mi" : "km");
+    snprintf(buf, sizeof(buf), "%.1f%s %s", d, fc_use_miles ? "mi" : "km",
+             fc_compass(stats_closest.bearing));
   }
-  printRecord(CONTENT_Y + 80, "Closest", stats_closest_cs, buf);
+  printRecord(CONTENT_Y + 82,  "Closest:",  stats_closest, buf);
 
-  if (stats_highest_cs[0])
-    snprintf(buf, sizeof(buf), "%d ft", (int)mToFt(stats_highest_alt));
-  printRecord(CONTENT_Y + 94, "Highest", stats_highest_cs, buf);
+  if (stats_highest.cs[0])
+    snprintf(buf, sizeof(buf), "%dft %s", (int)mToFt(stats_highest_alt),
+             fc_compass(stats_highest.bearing));
+  printRecord(CONTENT_Y + 98,  "Highest:",  stats_highest, buf);
 
-  if (stats_fastest_cs[0])
-    snprintf(buf, sizeof(buf), "%d kts", (int)msToKts(stats_fastest_spd));
-  printRecord(CONTENT_Y + 108, "Fastest", stats_fastest_cs, buf);
+  if (stats_fastest.cs[0])
+    snprintf(buf, sizeof(buf), "%dkts %s", (int)msToKts(stats_fastest_spd),
+             fc_compass(stats_fastest.bearing));
+  printRecord(CONTENT_Y + 114, "Fastest:",  stats_fastest, buf);
+
+  if (stats_climb.cs[0])
+    snprintf(buf, sizeof(buf), "%dfpm %s", (int)msToFpm(stats_climb_rate),
+             fc_compass(stats_climb.bearing));
+  printRecord(CONTENT_Y + 130, "Climb:",    stats_climb,   buf);
+
+  if (stats_desc.cs[0])
+    snprintf(buf, sizeof(buf), "%dfpm %s", (int)msToFpm(-stats_desc_rate),
+             fc_compass(stats_desc.bearing));
+  printRecord(CONTENT_Y + 146, "Descent:",  stats_desc,    buf);
+
+  // Peak traffic — no callsign/type, just count and time
+  gfx->setTextColor(COL_DIM);
+  gfx->setCursor(4, CONTENT_Y + 162);
+  gfx->print("Peak Traffic:");
+  if (stats_peak_count > 0) {
+    snprintf(buf, sizeof(buf), "%d ac", stats_peak_count);
+    gfx->setTextColor(COL_TITLE);
+    gfx->setCursor(276 - (int)strlen(buf) * 6, CONTENT_Y + 162);
+    gfx->print(buf);
+    if (stats_peak_hhmm[0]) {
+      gfx->setTextColor(COL_DIM);
+      gfx->setCursor(286, CONTENT_Y + 162);
+      gfx->print(stats_peak_hhmm);
+    }
+  } else {
+    gfx->setTextColor(COL_DIM);
+    gfx->setCursor(52, CONTENT_Y + 162);
+    gfx->print("--");
+  }
 
   // — Footer note —
   const char *note = "Resets daily at local midnight or on power cycle";
@@ -629,6 +776,7 @@ static void handleTouch(int tx, int ty) {
     if (newMode != fc_mode) {
       fc_mode       = newMode;
       fc_detail_idx = -1;
+      if (fc_mode == MODE_STATS) stats_fetching_types = true;
       redraw();
     }
     return;
@@ -746,6 +894,7 @@ void loop() {
     if (digitalRead(0) == LOW) {
       fc_mode = (fc_mode + 1) % 3;
       fc_detail_idx = -1;
+      if (fc_mode == MODE_STATS) stats_fetching_types = true;
       redraw();
       while (digitalRead(0) == LOW) delay(10);
     }
@@ -768,6 +917,17 @@ void loop() {
       tx = constrain(tx, 0, gfx->width()  - 1);
       ty = constrain(ty, 0, gfx->height() - 1);
       handleTouch(tx, ty);
+    }
+  }
+
+  // Background type lookup — start task when needed, redraw as types arrive.
+  // Task runs on core 0; loop() on core 1 is never blocked.
+  if (fc_mode == MODE_STATS && stats_fetching_types) {
+    startTypesFetch();
+    if (stats_type_arrived) {
+      stats_type_arrived = false;
+      drawStats();
+      drawFooter();
     }
   }
 

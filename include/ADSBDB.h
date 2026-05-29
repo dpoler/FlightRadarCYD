@@ -10,7 +10,7 @@
 // Called on first detail tap; result cached in FlightData until next radar refresh.
 // Returns true if a type was found.
 // ---------------------------------------------------------------------------
-bool adsbdbFetchType(FlightData &f) {
+bool adsbdbFetchType(FlightData &f, int timeoutMs = 10000) {
   if (f.type_fetched) return f.ac_type[0] != '\0';
   f.type_fetched = true;
 
@@ -26,7 +26,7 @@ bool adsbdbFetchType(FlightData &f) {
   {
     HTTPClient https;
     https.begin(*client, url);
-    https.setTimeout(10000);
+    https.setTimeout(timeoutMs);
     int code = https.GET();
     if (code == HTTP_CODE_OK) body = https.getString();
     else Serial.printf("[ADSBDB] HTTP %d\n", code);
