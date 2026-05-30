@@ -39,11 +39,13 @@ FlightRadarCYD connects to your WiFi, fetches live ADS-B state vectors from Open
 - Tap again to dismiss
 
 ### 📊 STATS Mode
-A daily summary of what's been tracked since midnight (or last power cycle).
+A rolling 24-hour summary. Stats and records persist across reboots via NVS and automatically expire after 24 hours — so the screen always shows the most recent activity regardless of when you last powered up.
 
-**TODAY**
-- Unique aircraft seen
-- Number of data fetches
+**CHART** (upper right) — unique aircraft seen per clock hour over the last 24 hours, showing when the airspace around you is busiest. The peak hour bar is highlighted in cyan. X-axis runs from -24h on the left to now on the right.
+
+**COUNTS** (upper left)
+- Unique aircraft seen in the last 24 hours (rolling)
+- Number of data updates
 
 **RECORDS** — each record shows the aircraft callsign, type (fetched in the background from ADSBDB), value + compass direction, and the time it was set:
 - **Closest:** nearest aircraft and bearing from your location
@@ -51,9 +53,9 @@ A daily summary of what's been tracked since midnight (or last power cycle).
 - **Fastest:** top ground speed and direction
 - **Climb:** steepest climb rate (fpm) and direction
 - **Descent:** steepest descent rate (fpm) and direction
-- **Peak Traffic:** most aircraft visible simultaneously, and when
+- **Peak Visible:** most aircraft simultaneously visible at any single data refresh, and when
 
-Aircraft types for record holders are fetched automatically in the background — the screen updates as each one arrives without blocking navigation. All records reset daily at local midnight or on power cycle.
+Aircraft types for record holders are fetched automatically in the background — the screen updates as each one arrives without blocking navigation. All stats and records roll on a 24-hour window and persist across reboots.
 
 ---
 
