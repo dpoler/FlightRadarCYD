@@ -194,6 +194,7 @@ static void drawArrowVert(int cx, int cy, bool up, uint16_t color) {
 // ---------------------------------------------------------------------------
 static void drawHeader() {
   gfx->fillRect(0, 0, 320, HEADER_H, COL_HEADER_BG);
+  char buf[32];
 
   // Title
   gfx->setTextColor(COL_TITLE);
@@ -201,12 +202,26 @@ static void drawHeader() {
   gfx->setCursor(4, 6);
   gfx->print("\x04 FlightCYD");   // ♦ glyph from font (or just use text)
 
-  // Aircraft count
-  char buf[32];
-  snprintf(buf, sizeof(buf), "%d AC", fc_flight_count);
-  gfx->setTextColor(fc_flight_count > 0 ? 0x07E0 : COL_DIM);
-  gfx->setCursor(130, 6);
-  gfx->print(buf);
+  // Dual clocks: HHMMZ / HHMM <TZ>
+  {
+    time_t now  = time(nullptr);
+    struct tm utc, loc;
+    gmtime_r(&now, &utc);
+    getLocalTime(&loc, 0);
+    char tz[8];
+    strftime(tz, sizeof(tz), "%Z", &loc);
+    char zulu[8], local[12];
+    snprintf(zulu,  sizeof(zulu),  "%02d%02dZ",   utc.tm_hour, utc.tm_min);
+    snprintf(local, sizeof(local), "%02d%02d %s", loc.tm_hour, loc.tm_min, tz[0] ? tz : "LT");
+    // center between title (ends ~x=74) and upd text (starts ~x=250)
+    int w  = (5 + 3 + (int)strlen(local)) * 6;  // "HHMMZ" + " / " + local
+    int cx = 74 + (176 - w) / 2;
+    gfx->setTextColor(COL_DIM);
+    gfx->setCursor(cx, 6);
+    gfx->print(zulu);
+    gfx->print(" / ");
+    gfx->print(local);
+  }
 
   // Last update — elapsed minutes since last successful fetch
   gfx->setTextColor(COL_DIM);
@@ -559,10 +574,10 @@ static void drawRadar() {
 // ---------------------------------------------------------------------------
 // STATS display
 // Layout (CONTENT_Y=20, CONTENT_H=200):
-//   +6  "Stats (last 24h)" title  |  +14 divider  |  +8px gap
-//   DIV_X=88: left panel = Unique/Updates; right panel = bar chart (3px bars, 9px step)
-//   +23..+106: left: counts at +36/+50  |  right: legend +24, bars +32..+94, ticks +96
-//   +106 divider  |  +112..+182 six record rows at 14px pitch
+//   +6  "Stats (last 24h)" title  |  +14 divider
+//   DIV_X=88: left panel = Current/Peak/Unique/Updates; right panel = unique AC/hr bar chart
+//   +15..+106: left: rows at +26/+40/+54/+68  |  right: legend +24, bars ..+94, ticks +96
+//   +106 divider  |  +112..+168 five record rows at 14px pitch
 // ---------------------------------------------------------------------------
 static void drawStats() {
   gfx->fillRect(0, CONTENT_Y, 320, CONTENT_H, 0x0000);
@@ -579,7 +594,7 @@ static void drawStats() {
   const int DIV_X = 88;
   gfx->drawFastVLine(DIV_X, CONTENT_Y + 15, 91, 0x2104);
 
-  // Left panel: Unique / Updates counts
+  // Left panel: Current / Peak / Unique / Updates
   {
     auto statRow = [&](int y, const char *label, int value) {
       gfx->setTextColor(COL_DIM);
@@ -589,8 +604,10 @@ static void drawStats() {
       gfx->setTextColor(COL_TITLE);
       gfx->print(buf);
     };
-    statRow(CONTENT_Y + 36, "Unique:", stats_unique_count);
-    statRow(CONTENT_Y + 50, "Updates:", stats_fetch_count);
+    statRow(CONTENT_Y + 26, "Current:", fc_flight_count);
+    statRow(CONTENT_Y + 40, "Peak:",    stats_peak_count);
+    statRow(CONTENT_Y + 54, "Unique:",  stats_unique_count);
+    statRow(CONTENT_Y + 68, "Updates:", stats_fetch_count);
   }
 
   // Right panel: bar chart + legend
@@ -699,26 +716,6 @@ static void drawStats() {
     snprintf(buf, sizeof(buf), "%dfpm %s", (int)msToFpm(-stats_desc_rate),
              fc_compass(stats_desc.bearing));
   printRecord(CONTENT_Y + 168, "Descent:",  stats_desc,    buf);
-
-  // Peak traffic
-  gfx->setTextColor(COL_DIM);
-  gfx->setCursor(4, CONTENT_Y + 182);
-  gfx->print("Peak Visible:");
-  if (stats_peak_count > 0) {
-    snprintf(buf, sizeof(buf), "%d ac", stats_peak_count);
-    gfx->setTextColor(COL_TITLE);
-    gfx->setCursor(276 - (int)strlen(buf) * 6, CONTENT_Y + 182);
-    gfx->print(buf);
-    if (stats_peak_hhmm[0]) {
-      gfx->setTextColor(COL_DIM);
-      gfx->setCursor(286, CONTENT_Y + 182);
-      gfx->print(stats_peak_hhmm);
-    }
-  } else {
-    gfx->setTextColor(COL_DIM);
-    gfx->setCursor(60, CONTENT_Y + 182);
-    gfx->print("--");
-  }
 }
 
 // ---------------------------------------------------------------------------
