@@ -19,24 +19,12 @@ A live aircraft radar and flight tracker built for the **ESP32 CYD** (Cheap Yell
 FlightRadarCYD connects to your WiFi, fetches live ADS-B state vectors from OpenSky Network, and gives you three display modes to explore the airspace around you. ICAO hex code is used to pull aircraft type from ADSBDB for the detail screen and stats records.
 
 ### 🟢 RADAR Mode
-- You are at the center crosshair `+`
+- You are at the center crosshair `🎯`
 - Aircraft appear as colored dots at their true bearing and distance
 - A short heading tick line shows where each aircraft is going
 - Three range rings labeled at 33% / 66% / 100% of your configured radius
 - Aircraft in the inner half of the radar show their callsign label
 - **Dot color by altitude:** cyan = high altitude cruise, yellow = low / approach, gray = on ground
-
-### 📋 LIST Mode
-- Closest 10 aircraft sorted by distance, with overflow count shown
-- Columns: **CALLSIGN · ALT · SPD · DIST · DIR · HDG · V**
-  - ALT in feet (or `GND` if on ground)
-  - SPD in knots
-  - DIST from your location
-  - DIR as compass bearing (N / NE / SE / etc.)
-  - HDG as a symbol showing direction of travel
-  - V shows vertical state if the aircraft is climbing or descending
-- **Tap any row** for a full detail overlay: Airline, altitude, speed, bearing, heading. Aircraft type will populate next to airline — it takes a couple seconds as it's a separate API call to ADSBDB. Airline names are pulled by matching ICAO codes from a CSV loaded from GitHub on boot.
-- Tap again to dismiss
 
 ### 📊 STATS Mode
 A rolling 24-hour summary. Stats and records persist across reboots via NVS and automatically expire after 24 hours — so the screen always shows the most recent activity regardless of when you last powered up.
@@ -56,6 +44,18 @@ A rolling 24-hour summary. Stats and records persist across reboots via NVS and 
 - **Peak Visible:** most aircraft simultaneously visible at any single data refresh, and when
 
 Aircraft types for record holders are fetched automatically in the background — the screen updates as each one arrives without blocking navigation. All stats and records roll on a 24-hour window and persist across reboots.
+
+### 📋 LIST Mode
+- Closest 10 aircraft sorted by distance, with overflow count shown
+- Columns: **CALLSIGN · ALT · SPD · DIST · DIR · HDG · V**
+  - ALT in meters or feet (or `GND` if on ground)
+  - SPD in knots
+  - DIST from your location
+  - DIR as compass bearing (N / NE / SE / etc.)
+  - HDG as a symbol showing direction of travel
+  - V shows vertical state if the aircraft is climbing or descending
+- **Tap any row** for a full detail overlay: Airline, altitude, speed, bearing, heading. Aircraft type will populate next to airline — it takes a couple seconds as it's a separate API call to ADSBDB. Airline names are pulled by matching ICAO codes from a CSV loaded from GitHub on boot.
+- Tap again to dismiss
 
 ---
 
@@ -144,6 +144,7 @@ pio run --target upload
 
 - The thing's got a tiny display. Other alternatives exist for fonts but none of them are wonderful.
 - I had originally included origin and destination info for flights, as ADSBDB does have this, but it's historical and wildly inaccurate. I can't find a good (free) source of origin/destination info, if you find one, please let me know.
+- airlines.csv is woefully incomplete. It would be impossibly large to include all possible ICAO airline designators in airlines.csv. Currently the file consists of US carriers, often-seen international carriers, and charter / flight school / fractional ownership services I see fly overhead. Additional contributions are welcome. 
 
 ## 🙏 Acknowledgement
 
