@@ -934,10 +934,11 @@ static void fetchTaskFn(void *) {
 // Touch handler
 // ---------------------------------------------------------------------------
 static void handleTouch(int tx, int ty) {
-  int footerY = 240 - FOOTER_H;
+  int footerY      = 240 - FOOTER_H;
+  int footerTouchY = footerY - 16;  // extend tap zone upward without moving the visual footer
 
   // Footer: switch modes
-  if (ty >= footerY) {
+  if (ty >= footerTouchY) {
     int newMode = (tx < 107) ? MODE_RADAR : (tx < 214) ? MODE_STATS : MODE_LIST;
     if (newMode != fc_mode) {
       fc_mode       = newMode;
