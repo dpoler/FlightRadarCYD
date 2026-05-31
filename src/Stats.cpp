@@ -123,6 +123,9 @@ void saveStats() {
     prefs.putBytes("seen_ts", stats_seen_ts,   stats_seen_count * sizeof(uint32_t));
   }
   prefs.putBytes("hourly_u", stats_hourly_unique, sizeof(stats_hourly_unique));
+  prefs.putInt("hr_seen_cnt", stats_hour_seen_cnt);
+  if (stats_hour_seen_cnt > 0)
+    prefs.putBytes("hr_seen", stats_hour_seen_icao, stats_hour_seen_cnt * 7);
   prefs.end();
 }
 
@@ -153,6 +156,9 @@ void loadStats() {
     prefs.getBytes("seen_ts", stats_seen_ts,   stats_seen_count * sizeof(uint32_t));
   }
   prefs.getBytes("hourly_u", stats_hourly_unique, sizeof(stats_hourly_unique));
+  int saved_hr_cnt = prefs.getInt("hr_seen_cnt", 0);
+  if (saved_hr_cnt > 0 && saved_hr_cnt <= MAX_HOUR_SEEN)
+    prefs.getBytes("hr_seen", stats_hour_seen_icao, saved_hr_cnt * 7);
   prefs.end();
 
   {
@@ -175,6 +181,9 @@ void loadStats() {
           h = (h + 1) % 24;
         }
         stats_hourly_unique[now_tm.tm_hour] = 0;
+      } else {
+        // Same hour — restore dedup buffer so reboots don't recount aircraft
+        stats_hour_seen_cnt = saved_hr_cnt;
       }
     }
   }
