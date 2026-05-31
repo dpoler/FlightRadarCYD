@@ -313,7 +313,7 @@ static void drawStats() {
       gfx->print(buf);
     };
     statRow(CONTENT_Y + 26, "Current:", fc_flight_count);
-    statRow(CONTENT_Y + 40, "Peak:",    stats_peak_count);
+    statRow(CONTENT_Y + 40, "Max:",     stats_peak_count);
     statRow(CONTENT_Y + 54, "Unique:",  stats_unique_count);
     statRow(CONTENT_Y + 68, "Updates:", stats_fetch_count);
   }
@@ -339,7 +339,7 @@ static void drawStats() {
     gfx->setTextColor(COL_DIM);
     gfx->print("unique AC/hr");
     if (trueMax > 0) {
-      gfx->print(" (");
+      gfx->print(" (Max: ");
       gfx->setTextColor(COL_TITLE);
       snprintf(buf, sizeof(buf), "%d", trueMax);
       gfx->print(buf);
