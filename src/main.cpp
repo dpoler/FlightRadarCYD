@@ -326,16 +326,25 @@ static void drawStats() {
     const int BAR_STEP  = 9;   // 24 × 9 = 216 px
     const int BAR_W     = 3;
 
-    gfx->setTextColor(COL_DIM);
-    gfx->setCursor(SPARK_X, CONTENT_Y + 24);
-    gfx->print("unique AC/hr");
-
     int cur_h = stats_current_hour >= 0 ? stats_current_hour : 0;
 
-    uint8_t maxH = 1;
+    uint8_t trueMax = 0;
     for (int bar = 0; bar < 24; bar++) {
       int hour_idx = (cur_h + 1 + bar) % 24;
-      if (stats_hourly_unique[hour_idx] > maxH) maxH = stats_hourly_unique[hour_idx];
+      if (stats_hourly_unique[hour_idx] > trueMax) trueMax = stats_hourly_unique[hour_idx];
+    }
+    uint8_t maxH = trueMax > 0 ? trueMax : 1;
+
+    gfx->setCursor(SPARK_X, CONTENT_Y + 24);
+    gfx->setTextColor(COL_DIM);
+    gfx->print("unique AC/hr");
+    if (trueMax > 0) {
+      gfx->print(" (");
+      gfx->setTextColor(COL_TITLE);
+      snprintf(buf, sizeof(buf), "%d", trueMax);
+      gfx->print(buf);
+      gfx->setTextColor(COL_DIM);
+      gfx->print(")");
     }
 
     gfx->drawFastHLine(SPARK_X, SPARK_BOT, 24 * BAR_STEP, COL_GRID);
