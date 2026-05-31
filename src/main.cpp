@@ -73,10 +73,11 @@ static unsigned long lastTouchTime = 0;
 // ---------------------------------------------------------------------------
 // App state
 // ---------------------------------------------------------------------------
-#define MODE_RADAR 0
-#define MODE_STATS 1
-#define MODE_LIST  2
-#define MAX_SEEN   500
+#define MODE_RADAR    0
+#define MODE_STATS    1
+#define MODE_LIST     2
+#define MAX_SEEN      500
+#define MAX_HOUR_SEEN 500
 
 static int  fc_mode         = MODE_RADAR;
 static int  fc_detail_idx   = -1;          // -1 = no detail overlay
@@ -119,9 +120,10 @@ static char     stats_seen_icao[MAX_SEEN][7] = {};
 static uint32_t stats_seen_ts[MAX_SEEN]      = {};  // epoch when first seen (24h expiry)
 static int      stats_seen_count             = 0;
 static uint8_t  stats_hourly_unique[24]      = {};  // rolling: unique ICAOs per clock hour
-static char     stats_hour_seen_icao[30][7]  = {};  // per-hour ICAO set (temp, cleared on transition)
+static char     stats_hour_seen_icao[MAX_HOUR_SEEN][7] = {};  // per-hour ICAO set (temp, cleared on transition)
 static int      stats_hour_seen_cnt          = 0;
 static int          stats_current_hour   = -1;
+static time_t       stats_save_ts        = 0;   // epoch of last saveStats(); used for boot-time hourly expiry
 static TaskHandle_t hTypeTask            = NULL;
 
 // ---------------------------------------------------------------------------
@@ -306,8 +308,8 @@ static void expireOldRecords() {
 static void saveStats() {
   Preferences prefs;
   prefs.begin("stats", false);
-  prefs.putInt("ver",       3);
-  prefs.putInt("cur_hour",  stats_current_hour);
+  prefs.putInt("ver",       4);
+  prefs.putUInt("save_ts",  (uint32_t)time(nullptr));
   prefs.putInt("unique",    stats_unique_count);
   prefs.putInt("fetch",     stats_fetch_count);
   prefs.putInt("peak_cnt",  stats_peak_count);
@@ -335,9 +337,9 @@ static void saveStats() {
 static void loadStats() {
   Preferences prefs;
   prefs.begin("stats", true);
-  if (prefs.getInt("ver", 0) < 3) { prefs.end(); return; }  // old/missing format — fresh start
+  if (prefs.getInt("ver", 0) < 4) { prefs.end(); return; }  // schema changed — fresh start
 
-  stats_current_hour   = prefs.getInt("cur_hour", -1);
+  stats_save_ts        = (time_t)prefs.getUInt("save_ts", 0);
   stats_fetch_count    = prefs.getInt("fetch", 0);
   stats_peak_count     = prefs.getInt("peak_cnt", 0);
   stats_peak_ts        = (time_t)prefs.getUInt("peak_ts", 0);
@@ -361,10 +363,40 @@ static void loadStats() {
   prefs.getBytes("hourly_u", stats_hourly_unique, sizeof(stats_hourly_unique));
   prefs.end();
 
+  // Decide what hourly data to keep.
+  {
+    time_t now_ts = time(nullptr);
+    int64_t elapsed = (int64_t)now_ts - (int64_t)stats_save_ts;
+
+    if (stats_save_ts <= 0 || elapsed < 0 || elapsed >= 86400) {
+      // No valid timestamp, clock went backwards, or 24h+ elapsed (covers the
+      // edge case of coming back at the same clock hour the following day).
+      memset(stats_hourly_unique, 0, sizeof(stats_hourly_unique));
+      stats_current_hour = -1;
+    } else {
+      struct tm save_tm, now_tm;
+      localtime_r(&stats_save_ts, &save_tm);
+      getLocalTime(&now_tm, 0);
+      stats_current_hour = save_tm.tm_hour;
+
+      if (save_tm.tm_hour != now_tm.tm_hour) {
+        // Crossed into a new hour — clear every slot we weren't running for,
+        // including the new current hour (which holds data from 24h ago).
+        int h = (save_tm.tm_hour + 1) % 24;
+        while (h != now_tm.tm_hour) {
+          stats_hourly_unique[h] = 0;
+          h = (h + 1) % 24;
+        }
+        stats_hourly_unique[now_tm.tm_hour] = 0;
+      }
+      // Same hour → just keep counting.
+    }
+  }
+
   expireOldRecords();  // drops anything older than 24h, recomputes stats_unique_count
 
-  Serial.printf("[Stats] Loaded: hour=%d unique=%d fetches=%d\n",
-                stats_current_hour, stats_unique_count, stats_fetch_count);
+  Serial.printf("[Stats] Loaded: save_ts=%lu unique=%d fetches=%d\n",
+                (unsigned long)stats_save_ts, stats_unique_count, stats_fetch_count);
 }
 
 // ---------------------------------------------------------------------------
@@ -412,7 +444,7 @@ static void updateStats() {
       bool seenHr = false;
       for (int j = 0; j < stats_hour_seen_cnt; j++)
         if (strcmp(stats_hour_seen_icao[j], f.icao) == 0) { seenHr = true; break; }
-      if (!seenHr && stats_hour_seen_cnt < 30) {
+      if (!seenHr && stats_hour_seen_cnt < MAX_HOUR_SEEN) {
         strncpy(stats_hour_seen_icao[stats_hour_seen_cnt], f.icao, 6);
         stats_hour_seen_icao[stats_hour_seen_cnt][6] = '\0';
         stats_hour_seen_cnt++;
