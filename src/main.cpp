@@ -671,7 +671,12 @@ static void drawStats() {
       if (stats_hourly_unique[hour_idx] == 0) continue;
       int bx   = SPARK_X + bar * BAR_STEP + 3;  // 3px left gap within step
       int barH = max(1, (int)((long)SPARK_H * stats_hourly_unique[hour_idx] / maxH));
-      uint16_t col = (stats_hourly_unique[hour_idx] == maxH) ? COL_TITLE : COL_ACCENT;
+      int val  = stats_hourly_unique[hour_idx];
+      // Heatmap: lerp from COL_ACCENT orange (R31 G41 B0) → COL_TITLE cyan (R0 G63 B31)
+      int r = (31 * (maxH - val)) / maxH;
+      int g = 41 + (22 * val) / maxH;
+      int b = (31 * val) / maxH;
+      uint16_t col = ((uint16_t)r << 11) | ((uint16_t)g << 5) | (uint16_t)b;
       gfx->fillRect(bx, SPARK_BOT - barH, BAR_W, barH, col);
     }
 
