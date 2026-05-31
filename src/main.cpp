@@ -82,6 +82,8 @@ static int  fc_mode         = MODE_RADAR;
 static int  fc_detail_idx   = -1;          // -1 = no detail overlay
 static unsigned long fc_last_fetch = 0;
 static bool fc_fetch_ok = false;
+static volatile bool fc_fetching   = false;
+static volatile bool fc_fetch_done = false;
 
 // Per-record bundle: callsign, ICAO (for type lookup), cached type, time seen
 struct StatRecord {
@@ -911,26 +913,21 @@ static void redraw() {
 }
 
 // ---------------------------------------------------------------------------
-// Fetch + update last-time string
+// Fetch — runs on core 0 so loop() on core 1 stays responsive
 // ---------------------------------------------------------------------------
-static void doFetch() {
-  showStatus("Fetching aircraft...");
+static void fetchTaskFn(void *) {
   float uLat = atof(fc_lat);
   float uLon = atof(fc_lon);
   fc_fetch_ok = openSkyFetch(uLat, uLon, (float)fc_radius_km, fc_client_id, fc_client_secret);
-
   if (fc_hide_ground) {
     int n = 0;
     for (int i = 0; i < fc_flight_count; i++)
       if (!fc_flights[i].on_ground) fc_flights[n++] = fc_flights[i];
     fc_flight_count = n;
   }
-
-
-  updateStats();
-  fc_last_fetch = millis();
-  fc_detail_idx = -1;
-  redraw();
+  fc_fetch_done = true;
+  fc_fetching   = false;
+  vTaskDelete(NULL);
 }
 
 // ---------------------------------------------------------------------------
@@ -1073,10 +1070,22 @@ void loop() {
     }
   }
 
-  // Auto-fetch on interval
+  // Post-fetch: runs on core 1 (display-safe) — must check before starting a new fetch
+  if (fc_fetch_done) {
+    fc_fetch_done = false;
+    updateStats();
+    fc_last_fetch = millis();
+    fc_detail_idx = -1;
+    redraw();
+  }
+
+  // Kick off background fetch when due
   unsigned long fetchInterval = (fc_client_id[0] != '\0') ? OPENSKY_INTERVAL_AUTH : OPENSKY_INTERVAL_ANON;
-  if (fc_last_fetch == 0 || (millis() - fc_last_fetch) > fetchInterval) {
-    doFetch();
+  if (!fc_fetching && (fc_last_fetch == 0 || (millis() - fc_last_fetch) > fetchInterval)) {
+    fc_fetching   = true;
+    fc_fetch_done = false;
+    showStatus("Fetching aircraft...");
+    xTaskCreatePinnedToCore(fetchTaskFn, "fetch", 8192, NULL, 1, NULL, 0);
   }
 
   // Touch
