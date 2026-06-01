@@ -88,12 +88,12 @@ Aircraft types for record holders are fetched automatically in the background �
 4. Enter the following settings:
 
 - **WiFi credentials**
-- **Latitude**, **Longitude**, and **Elevation** of your location. Elevation is used to distinguish low-level flights from those at cruise altitude.
+- **Latitude**, **Longitude**, and **Elevation** of your location. Elevation is used to distinguish low-level flights from those at cruise altitude. **TIP** Google Maps in a desktop browser will provide Lat/Long if you right-click on a pin, and mapcoordinates.net will provide elevation for a given Lat/Long.
 - **Time Zone** — for correct local times on the stats screen and the daily midnight reset
-- **Units** — Metric or Imperial
-- **Scan Radius** — choose a preset or enter custom. Inner rings appear at 1/3 and 2/3 of this distance. OpenSky maximum: 500 km / 310 mi.
+- **Units** — Metric or Imperial. Some units will always be in Imperial as is custom in aviation e.g. knots, fpm. 
+- **Scan Radius** — choose a preset or enter custom. Inner rings appear at 1/3 and 2/3 of this distance. OpenSky supports a maximum: 500 km / 310 mi.
 - **Hide aircraft on ground** — reduces clutter near major airports
-- **Invert display colors** — required for some CYD hardware variants; if colors look wrong, enable this
+- **Invert display colors** — required for some CYD hardware variants. If you'looking at a white screen on the device, then your colors are wrong - enable this
 - **OpenSky OAuth2 credentials** — anonymous access allows ~400 queries/day (4-minute refresh). A free OpenSky account increases this to 4,000 queries/day (30-second refresh) and enables aircraft trails on the radar. You can paste a `credentials.json` file directly or enter the fields manually.
 
 5. Tap **Save & Connect** — the device connects and begins tracking immediately
@@ -166,13 +166,13 @@ No separate filesystem upload step is required. The LittleFS partition is format
 
 ## ⚠️ Known Limitations
 
-- The display is small. Other font options exist but none are wonderful at this size.
 - Origin/destination info is not shown — ADSBDB has this data but it's historical and often inaccurate. If you find a reliable free source, please open an issue.
-- `airlines.csv` is intentionally incomplete. It covers US carriers, common international carriers, and charter/flight school/fractional operators. Contributions welcome.
+- `airlines.csv` is intentionally incomplete. It covers US carriers, common international carriers, and charter/flight school/fractional operators. I update it when I see something go by that I haven't seen. Contributions welcome.
+- If you're not authenticating with OpenSky, the anonymous 400/day limit is enforced by IP. If you have multiple devices running anonymously behind the same IP you will likely exceed the limit. 
 
 ## 🙏 Acknowledgement
 
-Based largely on Corelillia's [Flight-CYD-ESP32-Radar](https://github.com/Coreymillia/Flight-CYD-ESP32-Radar). There's a bunch of other cool projects cooking over there.
+Based largely on Coreymillia's [Flight-CYD-ESP32-Radar](https://github.com/Coreymillia/Flight-CYD-ESP32-Radar). There's a bunch of other cool projects cooking over there.
 
 ## 📜 License
 
