@@ -10,7 +10,7 @@ A live aircraft radar and flight tracker built for the **ESP32 CYD** (Cheap Yell
 |:---:|:---:|:---:|:---:|
 | ![Radar](RadarDisplay.png) | ![List](ListDisplay.png) | ![Detail](DetailDisplay.png) | ![Stats](StatsDisplay.png) |
 
-*Shows real flights detected including SWA2864, SWA3168, and N804HS*
+*Shows real flights detected including DAL2310, EDV4923, and AAL2808*
 
 ---
 
