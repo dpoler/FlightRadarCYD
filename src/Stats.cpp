@@ -2,8 +2,9 @@
 #include "ADSBDB.h"
 #include <Arduino.h>
 #include <Preferences.h>
+#include <LittleFS.h>
 
-#define MAX_SEEN      500
+#define MAX_SEEN      4500
 #define MAX_HOUR_SEEN 500
 
 // Public state
@@ -117,16 +118,22 @@ void saveStats() {
   prefs.putBytes("cb_rec",  &stats_climb, sizeof(StatRecord));
   prefs.putFloat("dc_rate", stats_desc_rate);
   prefs.putBytes("dc_rec",  &stats_desc, sizeof(StatRecord));
-  prefs.putInt("seen_cnt",  stats_seen_count);
-  if (stats_seen_count > 0) {
-    prefs.putBytes("seen",    stats_seen_icao, stats_seen_count * 7);
-    prefs.putBytes("seen_ts", stats_seen_ts,   stats_seen_count * sizeof(uint32_t));
-  }
   prefs.putBytes("hourly_u", stats_hourly_unique, sizeof(stats_hourly_unique));
   prefs.putInt("hr_seen_cnt", stats_hour_seen_cnt);
   if (stats_hour_seen_cnt > 0)
     prefs.putBytes("hr_seen", stats_hour_seen_icao, stats_hour_seen_cnt * 7);
   prefs.end();
+
+  File sf = LittleFS.open("/seen.bin", "w");
+  if (sf) {
+    uint16_t cnt = (uint16_t)stats_seen_count;
+    sf.write((uint8_t*)&cnt, sizeof(cnt));
+    if (cnt > 0) {
+      sf.write((uint8_t*)stats_seen_icao, cnt * 7);
+      sf.write((uint8_t*)stats_seen_ts,   cnt * sizeof(uint32_t));
+    }
+    sf.close();
+  }
 }
 
 void loadStats() {
@@ -150,16 +157,38 @@ void loadStats() {
   prefs.getBytes("cb_rec",  &stats_climb, sizeof(StatRecord));
   stats_desc_rate      = prefs.getFloat("dc_rate",  1e9f);
   prefs.getBytes("dc_rec",  &stats_desc, sizeof(StatRecord));
-  stats_seen_count     = prefs.getInt("seen_cnt", 0);
-  if (stats_seen_count > 0) {
-    prefs.getBytes("seen",    stats_seen_icao, stats_seen_count * 7);
-    prefs.getBytes("seen_ts", stats_seen_ts,   stats_seen_count * sizeof(uint32_t));
-  }
   prefs.getBytes("hourly_u", stats_hourly_unique, sizeof(stats_hourly_unique));
   int saved_hr_cnt = prefs.getInt("hr_seen_cnt", 0);
   if (saved_hr_cnt > 0 && saved_hr_cnt <= MAX_HOUR_SEEN)
     prefs.getBytes("hr_seen", stats_hour_seen_icao, saved_hr_cnt * 7);
   prefs.end();
+
+  // One-time migration: remove seen arrays from NVS (now stored in LittleFS)
+  {
+    Preferences clean;
+    clean.begin("stats", false);
+    if (clean.isKey("seen_cnt")) {
+      clean.remove("seen_cnt");
+      clean.remove("seen");
+      clean.remove("seen_ts");
+    }
+    clean.end();
+  }
+
+  {
+    File sf = LittleFS.open("/seen.bin", "r");
+    if (sf) {
+      uint16_t cnt = 0;
+      sf.read((uint8_t*)&cnt, sizeof(cnt));
+      if (cnt > MAX_SEEN) cnt = MAX_SEEN;
+      stats_seen_count = (int)cnt;
+      if (cnt > 0) {
+        sf.read((uint8_t*)stats_seen_icao, cnt * 7);
+        sf.read((uint8_t*)stats_seen_ts,   cnt * sizeof(uint32_t));
+      }
+      sf.close();
+    }
+  }
 
   {
     time_t now_ts = time(nullptr);

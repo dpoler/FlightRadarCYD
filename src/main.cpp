@@ -7,6 +7,7 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <LittleFS.h>
 #include <time.h>
 #include <Arduino_GFX_Library.h>
 #include <XPT2046_Touchscreen.h>
@@ -764,6 +765,7 @@ void setup() {
     int tries = 0;
     while (!getLocalTime(&t, 0) && tries++ < 20) delay(500);  // up to 10s for NTP
   }
+  LittleFS.begin(true);
   loadStats();
 
   // Draw initial shell so display isn't blank while waiting
