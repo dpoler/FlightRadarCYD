@@ -104,7 +104,6 @@ void saveStats() {
   prefs.putInt("ver",       4);
   prefs.putUInt("save_ts",  (uint32_t)time(nullptr));
   prefs.putInt("unique",    stats_unique_count);
-  prefs.putInt("fetch",     stats_fetch_count);
   prefs.putInt("peak_cnt",  stats_peak_count);
   prefs.putUInt("peak_ts",  (uint32_t)stats_peak_ts);
   prefs.putString("peak_hhmm", stats_peak_hhmm);
@@ -142,7 +141,6 @@ void loadStats() {
   if (prefs.getInt("ver", 0) < 4) { prefs.end(); return; }
 
   stats_save_ts        = (time_t)prefs.getUInt("save_ts", 0);
-  stats_fetch_count    = prefs.getInt("fetch", 0);
   stats_peak_count     = prefs.getInt("peak_cnt", 0);
   stats_peak_ts        = (time_t)prefs.getUInt("peak_ts", 0);
   String phhmm         = prefs.getString("peak_hhmm", "");
