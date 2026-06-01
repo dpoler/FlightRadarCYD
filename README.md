@@ -25,7 +25,7 @@ FlightRadarCYD connects to your WiFi, fetches live ADS-B state vectors from Open
 - Three range rings labeled at 33% / 66% / 100% of your configured radius
 - Aircraft in the inner half of the radar show their callsign label
 - **Dot color by altitude:** cyan = high altitude cruise, yellow = low / approach, gray = on ground
-- **Aircraft trails** — when using an authenticated API key (30-second refresh), each aircraft leaves a fading dotted trail of up to 5 previous positions, rendered as a smooth Catmull-Rom curve. Trails fade from dim green (oldest) to the aircraft's own color (most recent). Not shown in anonymous mode where 4-minute intervals make trails too sparse to be useful.
+- **Aircraft trails** — when using an authenticated API key (more on that below), each aircraft leaves a fading dotted trail of up to 5 previous positions. Trails fade from dim green (oldest) to the aircraft's own color (most recent). Not shown in anonymous mode where 4-minute intervals make trails too sparse to be useful.
 
 ### 📊 STATS Mode
 A rolling 24-hour summary. Stats and records persist across reboots via NVS and automatically expire after 24 hours — so the screen always shows the most recent activity regardless of when you last powered up.
@@ -34,9 +34,9 @@ A rolling 24-hour summary. Stats and records persist across reboots via NVS and 
 
 **COUNTS** (upper left)
 - **Current:** aircraft visible right now
-- **Max:** most aircraft simultaneously visible at any single refresh, and when
-- **Unique:** unique aircraft seen in the last 24 hours (rolling)
-- **Updates:** number of data fetches since boot
+- **Max:** number of aircraft simultaneously visible at any single refresh
+- **Unique:** number of unique aircraft seen
+- **Updates:** number of data fetches since boot (not last 24 hours).
 
 **RECORDS** — each record shows the aircraft callsign, type (fetched in the background from ADSBDB), value + compass direction, and the time it was set:
 - **Closest:** nearest aircraft and bearing from your location
@@ -61,17 +61,19 @@ Aircraft types for record holders are fetched automatically in the background �
 
 ---
 
-## 🛠️ Hardware
+## 🔄 Switching Modes
 
-| Component | Detail |
-|---|---|
-| Board | ESP32 CYD (Cheap Yellow Display) |
-| Display | ILI9341 320×240 TFT (HWSPI) |
-| Touch | XPT2046 resistive (VSPI: CLK=25, MISO=39, MOSI=32, CS=33, IRQ=36) |
-| Backlight | GPIO 21 |
-| Mode toggle | BOOT button (GPIO 0) |
+- **BOOT button** — cycles through RADAR → STATS → LIST
+- **Footer touch zones** — three equal zones: left = RADAR, center = STATS, right = LIST
 
-> **Hardware variants:** Some CYD production batches require display color inversion for correct rendering. The setup portal includes an "Invert display colors" option — check this if colors look wrong on your board. Inverted-variant boards typically have noticeably better color and contrast than original boards.
+---
+
+## 🔔 Status Indicator
+
+The **▲** triangle in the header shows fetch status at a glance:
+- **Amber** — fetch in progress
+- **Cyan** — last fetch succeeded
+- **Red** — last fetch failed (e.g. network error)
 
 ---
 
@@ -102,22 +104,6 @@ Aircraft types for record holders are fetched automatically in the background �
 
 ---
 
-## 🔄 Switching Modes
-
-- **BOOT button** — cycles through RADAR → STATS → LIST
-- **Footer touch zones** — three equal zones: left = RADAR, center = STATS, right = LIST
-
----
-
-## 🔔 Status Indicator
-
-The **▲** triangle in the header shows fetch status at a glance:
-- **Amber** — fetch in progress
-- **Cyan** — last fetch succeeded
-- **Red** — last fetch failed (e.g. network error)
-
----
-
 ## 📦 Data Sources
 
 | Source | Endpoint | Auth |
@@ -128,6 +114,20 @@ The **▲** triangle in the header shows fetch status at a glance:
 - OpenSky Network returns ADS-B state vectors: position, altitude, velocity, heading, callsign
 - Anonymous access: ~400 requests/day, 4-minute refresh interval
 - Authenticated access: ~4,000 requests/day, 30-second refresh interval — also enables aircraft trails on the radar screen
+
+---
+
+## 🛠️ Hardware
+
+| Component | Detail |
+|---|---|
+| Board | ESP32 CYD (Cheap Yellow Display) |
+| Display | ILI9341 320×240 TFT (HWSPI) |
+| Touch | XPT2046 resistive (VSPI: CLK=25, MISO=39, MOSI=32, CS=33, IRQ=36) |
+| Backlight | GPIO 21 |
+| Mode toggle | BOOT button (GPIO 0) |
+
+> **Hardware variants:** Some CYD production batches require display color inversion for correct rendering. The setup portal includes an "Invert display colors" option — check this if colors look wrong on your board. Inverted-variant boards typically have noticeably better color and contrast than original boards.
 
 ---
 
