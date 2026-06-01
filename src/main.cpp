@@ -130,11 +130,15 @@ static void drawHeader() {
   gfx->fillRect(0, 0, 320, HEADER_H, COL_HEADER_BG);
   char buf[32];
 
-  // Title
-  gfx->setTextColor(COL_TITLE);
+  // Title — symbol color reflects fetch state
+  uint16_t symColor = fc_fetching                         ? COL_ACCENT :
+                      (fc_fetch_ok || fc_last_fetch == 0) ? COL_TITLE  : RGB565_RED;
   gfx->setTextSize(1);
   gfx->setCursor(4, 6);
-  gfx->print("\x04 FlightCYD");   // ♦ glyph from font (or just use text)
+  gfx->setTextColor(symColor);
+  gfx->print("\x1e");
+  gfx->setTextColor(COL_TITLE);
+  gfx->print(" FlightRadarCYD");
 
   // Dual clocks: HHMMZ / HHMM <TZ>
   {
@@ -147,9 +151,9 @@ static void drawHeader() {
     char zulu[8], local[12];
     snprintf(zulu,  sizeof(zulu),  "%02d%02dZ",   utc.tm_hour, utc.tm_min);
     snprintf(local, sizeof(local), "%02d%02d %s", loc.tm_hour, loc.tm_min, tz[0] ? tz : "LT");
-    // center between title (ends ~x=74) and upd text (starts ~x=250)
+    // center between title (ends ~x=100) and upd text (starts ~x=250)
     int w  = (5 + 3 + (int)strlen(local)) * 6;  // "HHMMZ" + " / " + local
-    int cx = 74 + (176 - w) / 2;
+    int cx = 100 + (150 - w) / 2;
     gfx->setTextColor(COL_DIM);
     gfx->setCursor(cx, 6);
     gfx->print(zulu);
@@ -807,7 +811,7 @@ void loop() {
   if (!fc_fetching && (fc_last_fetch == 0 || (millis() - fc_last_fetch) > fetchInterval)) {
     fc_fetching   = true;
     fc_fetch_done = false;
-    showStatus("Fetching aircraft...");
+    drawHeader();
     xTaskCreatePinnedToCore(fetchTaskFn, "fetch", 8192, NULL, 1, NULL, 0);
   }
 
