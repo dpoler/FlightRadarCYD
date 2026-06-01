@@ -799,8 +799,12 @@ void setup() {
   Serial.begin(115200);
   Serial.println("FlightRadarCYD - Live Aircraft Radar");
 
+  // Load saved settings before display init so inversion is known
+  fcLoadSettings();
+
   // Display init
   if (!gfx->begin()) Serial.println("gfx->begin() failed!");
+  gfx->invertDisplay(fc_invert_display);
   gfx->fillScreen(RGB565_BLACK);
   pinMode(GFX_BL, OUTPUT);
   digitalWrite(GFX_BL, HIGH);
@@ -813,8 +817,6 @@ void setup() {
   ts.begin(touchSPI);
   ts.setRotation(1);
 
-  // Load saved settings
-  fcLoadSettings();
   bool showPortal = !fc_has_settings;
 
   if (!showPortal) {
@@ -829,6 +831,7 @@ void setup() {
     fcInitPortal();
     while (!portalDone) { fcRunPortal(); delay(5); }
     fcClosePortal();
+    gfx->invertDisplay(fc_invert_display);  // apply if changed during portal
   }
 
   // Connect WiFi

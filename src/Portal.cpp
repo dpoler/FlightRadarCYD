@@ -19,6 +19,7 @@ int  fc_elevation_ft      = 0;
 char fc_client_id[80]     = "";
 char fc_client_secret[64] = "";
 bool fc_hide_ground       = false;
+bool fc_invert_display    = false;
 char fc_tz_posix[64]      = "UTC0";
 bool fc_has_settings      = false;
 bool portalDone           = false;
@@ -36,8 +37,9 @@ void fcLoadSettings() {
   String lon  = prefs.getString("lon",  "");
   fc_radius_km    = prefs.getInt ("radius",   150);
   fc_use_miles    = prefs.getBool("miles",    false);
-  fc_hide_ground  = prefs.getBool("hide_gnd", false);
-  fc_elevation_ft = prefs.getInt ("elev_ft",  0);
+  fc_hide_ground     = prefs.getBool("hide_gnd",    false);
+  fc_invert_display  = prefs.getBool("invert_disp", false);
+  fc_elevation_ft    = prefs.getInt ("elev_ft",     0);
   String client_id  = prefs.getString("client_id",  "");
   String client_sec = prefs.getString("client_sec", "");
   String tz         = prefs.getString("tz_posix",   "UTC0");
@@ -59,20 +61,22 @@ void fcLoadSettings() {
 void fcSaveSettings(const char *ssid, const char *pass,
                     const char *lat, const char *lon, int radius, bool use_miles,
                     const char *client_id, const char *client_sec,
-                    bool hide_ground, int elevation_ft, const char *tz_posix) {
+                    bool hide_ground, int elevation_ft, const char *tz_posix,
+                    bool invert_display) {
   Preferences prefs;
   prefs.begin("flightcyd", false);
-  prefs.putString("ssid",       ssid);
-  prefs.putString("pass",       pass);
-  prefs.putString("lat",        lat);
-  prefs.putString("lon",        lon);
-  prefs.putInt   ("radius",     radius);
-  prefs.putBool  ("miles",      use_miles);
-  prefs.putBool  ("hide_gnd",   hide_ground);
-  prefs.putInt   ("elev_ft",    elevation_ft);
-  prefs.putString("client_id",  client_id);
-  prefs.putString("client_sec", client_sec);
-  prefs.putString("tz_posix",   tz_posix);
+  prefs.putString("ssid",        ssid);
+  prefs.putString("pass",        pass);
+  prefs.putString("lat",         lat);
+  prefs.putString("lon",         lon);
+  prefs.putInt   ("radius",      radius);
+  prefs.putBool  ("miles",       use_miles);
+  prefs.putBool  ("hide_gnd",    hide_ground);
+  prefs.putBool  ("invert_disp", invert_display);
+  prefs.putInt   ("elev_ft",     elevation_ft);
+  prefs.putString("client_id",   client_id);
+  prefs.putString("client_sec",  client_sec);
+  prefs.putString("tz_posix",    tz_posix);
   prefs.end();
 
   strncpy(fc_wifi_ssid,     ssid,       sizeof(fc_wifi_ssid)     - 1);
@@ -84,8 +88,9 @@ void fcSaveSettings(const char *ssid, const char *pass,
   strncpy(fc_tz_posix,      tz_posix,   sizeof(fc_tz_posix)      - 1);
   fc_radius_km    = radius;
   fc_use_miles    = use_miles;
-  fc_hide_ground  = hide_ground;
-  fc_elevation_ft = elevation_ft;
+  fc_hide_ground    = hide_ground;
+  fc_invert_display = invert_display;
+  fc_elevation_ft   = elevation_ft;
   fc_has_settings = true;
   setenv("TZ", fc_tz_posix, 1);
   tzset();
@@ -307,6 +312,11 @@ static void fcHandleRoot() {
   if (fc_hide_ground) html += " checked";
   html +=
     "> Hide aircraft on ground</label>"
+    "<label style='font-weight:normal;display:flex;align-items:center;gap:8px'>"
+    "<input type='checkbox' name='invert_display' value='1' style='width:auto'";
+  if (fc_invert_display) html += " checked";
+  html +=
+    "> Invert display colors (some CYD hardware variants require this)</label>"
     "<hr>"
     "<p style='text-align:left;color:#88aacc;margin:0 0 8px'>"
     "&#128274; OpenSky OAuth2 credentials (optional) — enables 30-second refresh"
@@ -362,8 +372,9 @@ static void fcHandleSave() {
   radius = constrain(radius, 20, 500);
   String client_id  = portalServer->hasArg("client_id")     ? portalServer->arg("client_id")     : "";
   String client_sec = portalServer->hasArg("client_secret") ? portalServer->arg("client_secret") : "";
-  bool   hide_ground   = portalServer->hasArg("hide_ground");
-  int    elevation_ft  = portalServer->hasArg("elevation") ? portalServer->arg("elevation").toInt() : 0;
+  bool   hide_ground    = portalServer->hasArg("hide_ground");
+  bool   invert_display = portalServer->hasArg("invert_display");
+  int    elevation_ft   = portalServer->hasArg("elevation") ? portalServer->arg("elevation").toInt() : 0;
   elevation_ft = constrain(elevation_ft, -1500, 20000);
   String tz_posix = portalServer->hasArg("tz_posix") ? portalServer->arg("tz_posix") : "UTC0";
   if (tz_posix.length() == 0 || tz_posix.length() >= 64) tz_posix = "UTC0";
@@ -378,7 +389,8 @@ static void fcHandleSave() {
   }
 
   fcSaveSettings(ssid.c_str(), pass.c_str(), lat.c_str(), lon.c_str(), radius, use_miles,
-                 client_id.c_str(), client_sec.c_str(), hide_ground, elevation_ft, tz_posix.c_str());
+                 client_id.c_str(), client_sec.c_str(), hide_ground, elevation_ft, tz_posix.c_str(),
+                 invert_display);
 
   portalServer->send(200, "text/html",
     "<html><head><meta charset='UTF-8'>"
