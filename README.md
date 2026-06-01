@@ -6,9 +6,11 @@ A live aircraft radar and flight tracker built for the **ESP32 CYD** (Cheap Yell
 
 ## 📸 Screenshots
 
-| RADAR Mode | LIST Mode | DETAIL display | STATS Mode |
-|:---:|:---:|:---:|:---:|
-| ![Radar](RadarDisplay.png) | ![List](ListDisplay.png) | ![Detail](DetailDisplay.png) | ![Stats](StatsDisplay.png) |
+| Setup Portal | RADAR Mode | LIST Mode | DETAIL display | STATS Mode |
+|:---:|:---:|:---:|:---:|:---:|
+| ![Portal](PortalDisplay.png) | ![Radar](RadarDisplay.png) | ![List](ListDisplay.png) | ![Detail](DetailDisplay.png) | ![Stats](StatsDisplay.png) |
+
+> **📷 Screenshot update needed:** Portal screenshot not yet captured. Radar screenshot should show aircraft trails. Stats screenshot should reflect updated Max label and chart legend.
 
 *Shows real flights detected including SWA2864, SWA3168, and N804HS*
 
@@ -19,21 +21,24 @@ A live aircraft radar and flight tracker built for the **ESP32 CYD** (Cheap Yell
 FlightRadarCYD connects to your WiFi, fetches live ADS-B state vectors from OpenSky Network, and gives you three display modes to explore the airspace around you. ICAO hex code is used to pull aircraft type from ADSBDB for the detail screen and stats records.
 
 ### 🟢 RADAR Mode
-- You are at the center crosshair `🎯`
+- You are at the center crosshair `+`
 - Aircraft appear as colored dots at their true bearing and distance
 - A short heading tick line shows where each aircraft is going
 - Three range rings labeled at 33% / 66% / 100% of your configured radius
 - Aircraft in the inner half of the radar show their callsign label
 - **Dot color by altitude:** cyan = high altitude cruise, yellow = low / approach, gray = on ground
+- **Aircraft trails** — when using an authenticated API key (30-second refresh), each aircraft leaves a fading dotted trail of up to 5 previous positions, rendered as a smooth Catmull-Rom curve. Trails fade from dim green (oldest) to the aircraft's own color (most recent). Not shown in anonymous mode where 4-minute intervals make trails too sparse to be useful.
 
 ### 📊 STATS Mode
 A rolling 24-hour summary. Stats and records persist across reboots via NVS and automatically expire after 24 hours — so the screen always shows the most recent activity regardless of when you last powered up.
 
-**CHART** (upper right) — unique aircraft seen per clock hour over the last 24 hours, showing when the airspace around you is busiest. The peak hour bar is highlighted in cyan. X-axis runs from -24h on the left to now on the right.
+**CHART** (upper right) — unique aircraft seen per clock hour over the last 24 hours, showing when the airspace around you is busiest. Bars are colored from orange (quiet hours) to cyan (peak hours). The legend shows the peak hourly count as `unique AC/hr (Max: N)`. X-axis runs from -24h on the left to now on the right.
 
 **COUNTS** (upper left)
-- Unique aircraft seen in the last 24 hours (rolling)
-- Number of data updates
+- **Current:** aircraft visible right now
+- **Max:** most aircraft simultaneously visible at any single refresh, and when
+- **Unique:** unique aircraft seen in the last 24 hours (rolling)
+- **Updates:** number of data fetches since boot
 
 **RECORDS** — each record shows the aircraft callsign, type (fetched in the background from ADSBDB), value + compass direction, and the time it was set:
 - **Closest:** nearest aircraft and bearing from your location
@@ -41,7 +46,6 @@ A rolling 24-hour summary. Stats and records persist across reboots via NVS and 
 - **Fastest:** top ground speed and direction
 - **Climb:** steepest climb rate (fpm) and direction
 - **Descent:** steepest descent rate (fpm) and direction
-- **Peak Visible:** most aircraft simultaneously visible at any single data refresh, and when
 
 Aircraft types for record holders are fetched automatically in the background — the screen updates as each one arrives without blocking navigation. All stats and records roll on a 24-hour window and persist across reboots.
 
@@ -69,24 +73,27 @@ Aircraft types for record holders are fetched automatically in the background �
 | Backlight | GPIO 21 |
 | Mode toggle | BOOT button (GPIO 0) |
 
+> **Hardware variants:** Some CYD production batches require display color inversion for correct rendering. The setup portal includes an "Invert display colors" option — check this if colors look wrong on your board. Inverted-variant boards typically have noticeably better color and contrast than original boards.
+
 ---
 
 ## ⚙️ Setup
 
-1. Flash the firmware with PlatformIO
+1. Flash the firmware with PlatformIO (`pio run --target upload`)
 2. On first boot, the device opens a WiFi access point: **`FlightRadarCYD_Setup`**
-3. Connect to it and navigate to `192.168.4.1` to access the configuration portal.
+3. Connect to it and navigate to `192.168.4.1` to access the configuration portal
 4. Enter the following settings:
 
 - **WiFi credentials**
-- **Latitude**, **Longitude**, and **Elevation** of your location, or where you want to track. Elevation is used to distinguish low-level flights vs. those at cruise.
+- **Latitude**, **Longitude**, and **Elevation** of your location. Elevation is used to distinguish low-level flights from those at cruise altitude.
+- **Time Zone** — for correct local times on the stats screen and the daily midnight reset
 - **Units** — Metric or Imperial
-- **Timezone** — POSIX TZ string for your local timezone (e.g. `EST5EDT,M3.2.0,M11.1.0`). Used to display correct local times on the stats screen and for the daily midnight reset. A reference list of POSIX TZ strings is available [here](https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv).
-- **Scan Radius** — Choose a default or enter custom. Inner rings appear at 1/3 and 2/3 of this distance. The maximum OpenSky will support is 500 km / 310 mi.
-- **Hide aircraft on ground** — If you live near a major airport, hiding aircraft not in flight will keep the display from being cluttered.
-- **OpenSky OAuth2 credentials** — OpenSky's API will allow 400 anonymous queries per day. If you sign up for a (free) account and supply your credentials here, the limit increases to 4,000 queries per day. You can enter your credentials or simply paste the credentials.json file. See Data Sources section below for more information.
+- **Scan Radius** — choose a preset or enter custom. Inner rings appear at 1/3 and 2/3 of this distance. OpenSky maximum: 500 km / 310 mi.
+- **Hide aircraft on ground** — reduces clutter near major airports
+- **Invert display colors** — required for some CYD hardware variants; if colors look wrong, enable this
+- **OpenSky OAuth2 credentials** — anonymous access allows ~400 queries/day (4-minute refresh). A free OpenSky account increases this to 4,000 queries/day (30-second refresh) and enables aircraft trails on the radar. You can paste a `credentials.json` file directly or enter the fields manually.
 
-5. Save — device restarts and begins tracking
+5. Tap **Save & Connect** — the device connects and begins tracking immediately
 
 > **Tip:** Hold the BOOT button on power-up at any time to re-open the setup portal and change your settings.
 
@@ -99,18 +106,25 @@ Aircraft types for record holders are fetched automatically in the background �
 
 ---
 
+## 🔔 Status Indicator
+
+The **▲** triangle in the header shows fetch status at a glance:
+- **Amber** — fetch in progress
+- **Cyan** — last fetch succeeded
+- **Red** — last fetch failed (e.g. network error)
+
+---
+
 ## 📦 Data Sources
 
 | Source | Endpoint | Auth |
 |---|---|---|
-| [OpenSky Network](https://opensky-network.org) | `/api/states/all` (bounding box) | Anonymous or with API key |
+| [OpenSky Network](https://opensky-network.org) | `/api/states/all` (bounding box) | Anonymous or OAuth2 |
 | [ADSBDB](https://www.adsbdb.com) | `/v0/aircraft/{icao}` | None — anonymous |
 
 - OpenSky Network returns ADS-B state vectors: position, altitude, velocity, heading, callsign
-- Free anonymous access — approximately 400 requests/day
-- Signing up for an account is free and increases the limit to 4,000 requests/day. Enter details in the portal.
-- If no credentials are provided, 4-minute refresh interval is set, which uses ~360 requests/day.
-- If credentials are provided a 30-second refresh interval is set, to take advantage of the increased limit.
+- Anonymous access: ~400 requests/day, 4-minute refresh interval
+- Authenticated access: ~4,000 requests/day, 30-second refresh interval — also enables aircraft trails on the radar screen
 
 ---
 
@@ -119,13 +133,18 @@ Aircraft types for record holders are fetched automatically in the background �
 ```
 FlightRadarCYD/
 ├── src/
-│   └── main.cpp          # Display modes, touch, BOOT button, radar geometry, stats tracking
+│   ├── main.cpp          # Display modes, radar geometry, aircraft trails, touch, header
+│   ├── Stats.cpp         # 24-hour rolling stats, hourly chart data, LittleFS persistence
+│   ├── Portal.cpp        # Captive portal: WiFi, location, timezone, display settings
+│   ├── OpenSky.cpp       # OpenSky API fetch, parse, distance sort
+│   ├── Airlines.cpp      # Airline name lookup (loads airlines.csv from GitHub at boot)
+│   └── ADSBDB.cpp        # Aircraft type lookup (detail tap + stats records)
 ├── include/
-│   ├── Portal.h          # Captive portal WiFi + location + timezone setup (NVS storage)
-│   ├── OpenSky.h         # OpenSky API fetch, parse, distance sort
-│   ├── Airlines.h        # Airline name lookup (loads airlines.csv from GitHub at boot)
-│   └── ADSBDB.h          # Aircraft type lookup from adsbdb.com (detail tap + stats records)
-├── INVERTEDFlightCYD/    # Inverted display variant (black/white swapped)
+│   ├── Stats.h
+│   ├── Portal.h
+│   ├── OpenSky.h
+│   ├── Airlines.h
+│   └── ADSBDB.h
 ├── airlines.csv          # ICAO airline code → name table
 └── platformio.ini
 ```
@@ -135,16 +154,18 @@ FlightRadarCYD/
 ## 🔧 Build
 
 ```bash
-cd FlightRadarCYD
-pio run
 pio run --target upload
 ```
 
+No separate filesystem upload step is required. The LittleFS partition is formatted automatically on first boot and the device writes its own runtime data files.
+
+---
+
 ## ⚠️ Known Limitations
 
-- The thing's got a tiny display. Other alternatives exist for fonts but none of them are wonderful.
-- I had originally included origin and destination info for flights, as ADSBDB does have this, but it's historical and wildly inaccurate. I can't find a good (free) source of origin/destination info, if you find one, please let me know.
-- airlines.csv is woefully incomplete. It would be impossibly large to include all possible ICAO airline designators in airlines.csv. Currently the file consists of US carriers, often-seen international carriers, and charter / flight school / fractional ownership services I see fly overhead. Additional contributions are welcome. 
+- The display is small. Other font options exist but none are wonderful at this size.
+- Origin/destination info is not shown — ADSBDB has this data but it's historical and often inaccurate. If you find a reliable free source, please open an issue.
+- `airlines.csv` is intentionally incomplete. It covers US carriers, common international carriers, and charter/flight school/fractional operators. Contributions welcome.
 
 ## 🙏 Acknowledgement
 
