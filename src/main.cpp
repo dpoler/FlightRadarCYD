@@ -86,6 +86,10 @@ static bool fc_fetch_ok = false;
 static volatile bool fc_fetching   = false;
 static volatile bool fc_fetch_done = false;
 
+#define TRAIL_LEN 5
+struct TrailEntry { char icao[8]; float bng[TRAIL_LEN]; float dist[TRAIL_LEN]; uint8_t n; uint8_t age; };
+static TrailEntry g_trails[MAX_FLIGHTS];
+
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -201,6 +205,49 @@ static void drawFooter() {
 }
 
 // ---------------------------------------------------------------------------
+static uint16_t lerpColor(uint16_t c1, uint16_t c2, int num, int den) {
+  int r = ((c1>>11)&0x1F) + (((int)((c2>>11)&0x1F) - (int)((c1>>11)&0x1F)) * num / den);
+  int g = ((c1>>5 )&0x3F) + (((int)((c2>>5 )&0x3F) - (int)((c1>>5 )&0x3F)) * num / den);
+  int b = ( c1     &0x1F) + (((int)( c2     &0x1F) - (int)( c1     &0x1F)) * num / den);
+  return ((uint16_t)r<<11)|((uint16_t)g<<5)|(uint16_t)b;
+}
+
+static void updateTrails() {
+  for (int i = 0; i < MAX_FLIGHTS; i++)
+    if (g_trails[i].icao[0]) g_trails[i].age++;
+
+  for (int i = 0; i < fc_flight_count; i++) {
+    const FlightData &f = fc_flights[i];
+    int slot = -1;
+    for (int j = 0; j < MAX_FLIGHTS; j++)
+      if (strcmp(g_trails[j].icao, f.icao) == 0) { slot = j; break; }
+    if (slot < 0)
+      for (int j = 0; j < MAX_FLIGHTS; j++)
+        if (!g_trails[j].icao[0]) { slot = j; break; }
+    if (slot < 0) continue;
+
+    TrailEntry &e = g_trails[slot];
+    strncpy(e.icao, f.icao, sizeof(e.icao) - 1);
+    e.icao[sizeof(e.icao)-1] = '\0';
+    if (e.n == TRAIL_LEN) {
+      memmove(e.bng,  e.bng  + 1, (TRAIL_LEN - 1) * sizeof(float));
+      memmove(e.dist, e.dist + 1, (TRAIL_LEN - 1) * sizeof(float));
+      e.n = TRAIL_LEN - 1;
+    }
+    e.bng[e.n]  = f.bearing;
+    e.dist[e.n] = f.dist_km;
+    e.n++;
+    e.age = 0;
+  }
+
+  for (int i = 0; i < MAX_FLIGHTS; i++)
+    if (g_trails[i].icao[0] && g_trails[i].age > 1) {
+      g_trails[i].icao[0] = '\0';
+      g_trails[i].n = 0;
+      g_trails[i].age = 0;
+    }
+}
+
 // RADAR display
 // ---------------------------------------------------------------------------
 static void drawRadar() {
@@ -240,6 +287,53 @@ static void drawRadar() {
   gfx->setTextColor(COL_USER);
   gfx->drawFastHLine(cx - 5, cy, 11, COL_USER);
   gfx->drawFastVLine(cx, cy - 5, 11, COL_USER);
+
+  // Trail dots — authenticated mode only (30s fetches make trails meaningful)
+  if (fc_client_id[0] != '\0') {
+    for (int i = 0; i < fc_flight_count; i++) {
+      const FlightData &f = fc_flights[i];
+      TrailEntry *e = nullptr;
+      for (int j = 0; j < MAX_FLIGHTS; j++)
+        if (strcmp(g_trails[j].icao, f.icao) == 0) { e = &g_trails[j]; break; }
+      if (!e || e->n == 0) continue;
+
+      uint16_t col = acColor(f);
+
+      // Build screen-space point list: trail history + current position
+      float ptx[TRAIL_LEN + 1], pty[TRAIL_LEN + 1];
+      int npts = 0;
+      for (int k = 0; k < (int)e->n; k++) {
+        float tbng = e->bng[k] * (float)M_PI / 180.0f;
+        ptx[npts] = cx + sinf(tbng) * e->dist[k] * scale;
+        pty[npts] = cy - cosf(tbng) * e->dist[k] * scale;
+        npts++;
+      }
+      float cbng = f.bearing * (float)M_PI / 180.0f;
+      ptx[npts] = cx + sinf(cbng) * f.dist_km * scale;
+      pty[npts] = cy - cosf(cbng) * f.dist_km * scale;
+      npts++;
+
+      // Catmull-Rom spline through stored positions, dot every 4px
+      for (int k = 0; k + 1 < npts; k++) {
+        int km1 = (k > 0)        ? k - 1 : k;
+        int kp2 = (k + 2 < npts) ? k + 2 : k + 1;
+        float p0x = ptx[km1], p0y = pty[km1];
+        float p1x = ptx[k],   p1y = pty[k];
+        float p2x = ptx[k+1], p2y = pty[k+1];
+        float p3x = ptx[kp2], p3y = pty[kp2];
+        float dx = p2x - p1x, dy = p2y - p1y;
+        int steps = max(1, (int)sqrtf(dx*dx + dy*dy) / 4);
+        uint16_t dotCol = lerpColor(COL_GRID, col, k + 1, npts);
+        for (int s = 0; s < steps; s++) {
+          float t = (float)s / steps, t2 = t*t, t3 = t2*t;
+          int px = (int)(0.5f * (2*p1x + (-p0x+p2x)*t + (2*p0x-5*p1x+4*p2x-p3x)*t2 + (-p0x+3*p1x-3*p2x+p3x)*t3));
+          int py = (int)(0.5f * (2*p1y + (-p0y+p2y)*t + (2*p0y-5*p1y+4*p2y-p3y)*t2 + (-p0y+3*p1y-3*p2y+p3y)*t3));
+          if (px < 0 || px >= 320 || py < CONTENT_Y || py >= CONTENT_Y + CONTENT_H) continue;
+          gfx->drawPixel(px, py, dotCol);
+        }
+      }
+    }
+  }
 
   // Draw aircraft
   for (int i = 0; i < fc_flight_count; i++) {
@@ -804,6 +898,7 @@ void loop() {
     fc_last_fetch = millis();
     fc_detail_idx = -1;
     redraw();
+    if (fc_fetch_ok && fc_client_id[0] != '\0') updateTrails();
   }
 
   // Kick off background fetch when due
