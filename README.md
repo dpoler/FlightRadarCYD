@@ -6,11 +6,15 @@ A live aircraft radar and flight tracker built for the **ESP32 CYD** (Cheap Yell
 
 ## 📸 Screenshots
 
-| Setup Portal | RADAR Mode | LIST Mode | DETAIL display | STATS Mode |
-|:---:|:---:|:---:|:---:|:---:|
-| ![Portal](PortalDisplay.png) | ![Radar](RadarDisplay.png) | ![List](ListDisplay.png) | ![Detail](DetailDisplay.png) | ![Stats](StatsDisplay.png) |
+**Setup Portal**
+| Top | Bottom |
+|:---:|:---:|
+| ![](<Portal 1.png>) | ![](<Portal 2.png>) |
 
-> **📷 Screenshot update needed:** Portal screenshot not yet captured. Radar screenshot should show aircraft trails. Stats screenshot should reflect updated Max label and chart legend.
+**Display Modes**
+| RADAR Mode | LIST Mode | DETAIL display | STATS Mode |
+|:---:|:---:|:---:|:---:|
+| ![Radar](RadarDisplay.png) | ![List](ListDisplay.png) | ![Detail](DetailDisplay.png) | ![Stats](StatsDisplay.png) |
 
 *Shows real flights detected including SWA2864, SWA3168, and N804HS*
 
