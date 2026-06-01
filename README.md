@@ -6,12 +6,6 @@ A live aircraft radar and flight tracker built for the **ESP32 CYD** (Cheap Yell
 
 ## ðŸ“¸ Screenshots
 
-**Setup Portal**
-| Top | Bottom |
-|:---:|:---:|
-| ![](<Portal 1.png>) | ![](<Portal 2.png>) |
-
-**Display Modes**
 | RADAR Mode | LIST Mode | DETAIL display | STATS Mode |
 |:---:|:---:|:---:|:---:|
 | ![Radar](RadarDisplay.png) | ![List](ListDisplay.png) | ![Detail](DetailDisplay.png) | ![Stats](StatsDisplay.png) |
@@ -86,6 +80,11 @@ Aircraft types for record holders are fetched automatically in the background â€
 1. Flash the firmware with PlatformIO (`pio run --target upload`)
 2. On first boot, the device opens a WiFi access point: **`FlightRadarCYD_Setup`**
 3. Connect to it and navigate to `192.168.4.1` to access the configuration portal
+
+| | |
+|:---:|:---:|
+| ![](<Portal 1.png>) | ![](<Portal 2.png>) |
+
 4. Enter the following settings:
 
 - **WiFi credentials**
