@@ -30,6 +30,7 @@ extern int        stats_current_hour;
 extern bool       stats_fetching_types;
 extern volatile bool stats_type_arrived;
 
+void resetStats();
 void saveStats();
 void loadStats();
 void updateStats();

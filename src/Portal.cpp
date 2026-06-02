@@ -1,4 +1,5 @@
 #include "Portal.h"
+#include "Stats.h"
 #include <Arduino.h>
 #include <Arduino_GFX_Library.h>
 #include <WebServer.h>
@@ -388,9 +389,17 @@ static void fcHandleSave() {
     return;
   }
 
+  bool locationChanged = fc_has_settings &&
+                         (strcmp(lat.c_str(), fc_lat) != 0 || strcmp(lon.c_str(), fc_lon) != 0);
+
   fcSaveSettings(ssid.c_str(), pass.c_str(), lat.c_str(), lon.c_str(), radius, use_miles,
                  client_id.c_str(), client_sec.c_str(), hide_ground, elevation_ft, tz_posix.c_str(),
                  invert_display);
+
+  if (locationChanged) {
+    resetStats();
+    Serial.printf("[Portal] Location changed to %s, %s — stats reset\n", fc_lat, fc_lon);
+  }
 
   portalServer->send(200, "text/html",
     "<html><head><meta charset='UTF-8'>"

@@ -98,6 +98,29 @@ void expireOldRecords() {
   stats_unique_count = n;
 }
 
+void resetStats() {
+  stats_unique_count  = 0;
+  stats_fetch_count   = 0;
+  stats_peak_count    = 0;
+  stats_peak_ts       = 0;
+  stats_peak_hhmm[0]  = '\0';
+  stats_closest_dist  = 1e9f;  stats_closest = {};
+  stats_highest_alt   = -1e9f; stats_highest = {};
+  stats_fastest_spd   = -1e9f; stats_fastest = {};
+  stats_climb_rate    = -1e9f; stats_climb   = {};
+  stats_desc_rate     =  1e9f; stats_desc    = {};
+  memset(stats_hourly_unique, 0, sizeof(stats_hourly_unique));
+  stats_current_hour  = -1;
+  stats_hour_seen_cnt = 0;
+  stats_seen_count    = 0;
+  // LittleFS may not be mounted yet (called from portal); set a flag so
+  // loadStats() clears seen.bin after LittleFS.begin()
+  Preferences prefs;
+  prefs.begin("stats", false);
+  prefs.putBool("loc_reset", true);
+  prefs.end();
+}
+
 void saveStats() {
   Preferences prefs;
   prefs.begin("stats", false);
@@ -136,6 +159,19 @@ void saveStats() {
 }
 
 void loadStats() {
+  {
+    Preferences prefs;
+    prefs.begin("stats", false);
+    if (prefs.getBool("loc_reset", false)) {
+      prefs.remove("loc_reset");
+      prefs.end();
+      LittleFS.remove("/seen.bin");
+      Serial.println("[Stats] Location changed — stats cleared");
+      return;
+    }
+    prefs.end();
+  }
+
   Preferences prefs;
   prefs.begin("stats", true);
   if (prefs.getInt("ver", 0) < 4) { prefs.end(); return; }
