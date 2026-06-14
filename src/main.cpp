@@ -845,6 +845,7 @@ void setup() {
       char msg[60];
       snprintf(msg, sizeof(msg), "WiFi failed: \"%s\"", fc_wifi_ssid);
       showStatus(msg);
+      Serial.printf("[WiFi] Failed after %lums\n", millis() - wStart);
       while (true) delay(1000);
     }
     delay(500);
@@ -853,6 +854,7 @@ void setup() {
     showStatus(msg);
     dots++;
   }
+  Serial.printf("[WiFi] Connected in %lums\n", millis() - wStart);
   showStatus("WiFi connected!");
   showStatus("Loading airline data...");
   airlinesLoad();
@@ -864,7 +866,10 @@ void setup() {
   {
     struct tm t;
     int tries = 0;
+    unsigned long ntpStart = millis();
     while (!getLocalTime(&t, 0) && tries++ < 20) delay(500);  // up to 10s for NTP
+    if (getLocalTime(&t, 0)) Serial.printf("[NTP] Synced in %lums\n", millis() - ntpStart);
+    else                     Serial.printf("[NTP] Failed after %lums\n", millis() - ntpStart);
   }
   LittleFS.begin(true);
   loadStats();

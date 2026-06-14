@@ -9,6 +9,7 @@ bool adsbdbFetchType(FlightData &f, int timeoutMs) {
 
   char url[80];
   snprintf(url, sizeof(url), "https://api.adsbdb.com/v0/aircraft/%s", f.icao);
+  unsigned long t0 = millis();
   Serial.printf("[ADSBDB] GET %s\n", url);
 
   WiFiClientSecure *client = new WiFiClientSecure;
@@ -21,8 +22,8 @@ bool adsbdbFetchType(FlightData &f, int timeoutMs) {
     https.begin(*client, url);
     https.setTimeout(timeoutMs);
     int code = https.GET();
+    Serial.printf("[ADSBDB] HTTP %d in %lums\n", code, millis() - t0);
     if (code == HTTP_CODE_OK) body = https.getString();
-    else Serial.printf("[ADSBDB] HTTP %d\n", code);
     https.end();
   }
   delete client;

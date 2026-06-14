@@ -62,6 +62,7 @@ static bool fc_fetch_token(const char *clientId, const char *clientSecret) {
   if (!client) return false;
   client->setInsecure();
 
+  unsigned long t0 = millis();
   String body;
   {
     HTTPClient https;
@@ -73,8 +74,8 @@ static bool fc_fetch_token(const char *clientId, const char *clientSecret) {
     payload += "&client_secret=";
     payload += clientSecret;
     int code = https.POST(payload);
+    Serial.printf("[OpenSky] Token HTTP %d in %lums\n", code, millis() - t0);
     if (code == HTTP_CODE_OK) body = https.getString();
-    else Serial.printf("[OpenSky] Token HTTP %d\n", code);
     https.end();
   }
   delete client;
@@ -113,6 +114,7 @@ bool openSkyFetch(float userLat, float userLon, float radiusKm,
     userLat - degLat, userLon - degLon,
     userLat + degLat, userLon + degLon);
 
+  unsigned long t0 = millis();
   Serial.printf("[OpenSky] GET %s\n", url);
 
   bool hasAuth = clientId && clientId[0] != '\0';
@@ -130,8 +132,8 @@ bool openSkyFetch(float userLat, float userLon, float radiusKm,
     https.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     if (hasAuth) https.addHeader("Authorization", String("Bearer ") + fc_access_token);
     int code = https.GET();
+    Serial.printf("[OpenSky] HTTP %d in %lums\n", code, millis() - t0);
     if (code == HTTP_CODE_OK) body = https.getString();
-    else Serial.printf("[OpenSky] HTTP %d\n", code);
     https.end();
   }
   delete client;
@@ -193,7 +195,7 @@ bool openSkyFetch(float userLat, float userLon, float radiusKm,
     fc_insert_sorted(f);
   }
 
-  Serial.printf("[OpenSky] bbox=%d  circle=%d  shown=%d\n",
-                fc_total_in_bbox, fc_flight_count, fc_flight_count);
+  Serial.printf("[OpenSky] bbox=%d  circle=%d  shown=%d  total=%lums\n",
+                fc_total_in_bbox, fc_flight_count, fc_flight_count, millis() - t0);
   return true;
 }

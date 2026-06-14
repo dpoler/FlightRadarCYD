@@ -16,14 +16,15 @@ bool airlinesLoad() {
   if (!client) return false;
   client->setInsecure();
 
+  unsigned long t0 = millis();
   String body;
   {
     HTTPClient https;
     https.begin(*client, AIRLINES_URL);
     https.setTimeout(15000);
     int code = https.GET();
+    Serial.printf("[Airlines] HTTP %d in %lums\n", code, millis() - t0);
     if (code == HTTP_CODE_OK) body = https.getString();
-    else Serial.printf("[Airlines] HTTP %d\n", code);
     https.end();
   }
   delete client;
