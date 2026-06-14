@@ -5,27 +5,27 @@
 AAL,American Airlines,AMERICAN
 AAR,Asiana Airlines,ASIANA
 AAY,Allegiant Air,ALLEGIANT
-ABX,ABX Air,
-ABY,Air Arabia,
+ABX,ABX Air,ABEX
+ABY,Air Arabia,ARABIA
 ACA,Air Canada,AIR CANADA
 AEA,Air Europa,EUROPA
 AEE,Aegean Airlines,AEGEAN
 AFL,Aeroflot,AEROFLOT
 AFR,Air France,AIR FRANCE
 AIC,Air India,AIR INDIA
-AIP,Alpine Air Express,
+AIP,Alpine Air Express,ALPINE AIR
 AMX,Aeromexico,AEROMEXICO
 ANA,All Nippon Airways,ALL NIPPON
 ANZ,Air New Zealand,NEW ZEALAND
 ARG,Aerolineas Argentinas,ARGENTINA
 ASA,Alaska Airlines,ALASKA
-ASH,Mesa Airlines,
-ATN,Air Transport Intl,
+ASH,Mesa Airlines,AIR SHUTTLE
+ATN,Air Transport Intl,AIR TRANSPORT
 AUA,Austrian Airlines,AUSTRIAN
 AVA,Avianca,AVIANCA
-AWI,Air Wisconsin,
-AZA,ITA Airways,
-AZU,Azul Airlines,
+AWI,Air Wisconsin,WISCONSIN
+AZA,ITA Airways,ALITALIA
+AZU,Azul Airlines,AZUL
 BAW,British Airways,SPEEDBIRD
 BEL,Brussels Airlines,
 BLK,Aero Black,
@@ -45,6 +45,7 @@ CLX,Cargolux,CARGOLUX
 CMP,Copa Airlines,COPA
 CPA,Cathay Pacific,CATHAY
 CSN,China Southern,CHINA SOUTHERN
+CWG,Wing Aviation,CLEAR WINGS
 CXA,Xiamen Airlines,
 CXK,ATP Flight School,
 DAH,Air Algerie,
@@ -80,6 +81,7 @@ IBE,Iberia,IBERIA
 ICE,Icelandair,ICEAIR
 IGO,IndiGo,INDIGO
 IJA,Intl Jet Aviation Svcs,
+ITY,ITA Airways,ITARROW
 IPD,Business Aviators Inc,
 JAS,Jet Aviation Flight Services,
 JAL,Japan Airlines,JAPANAIR
