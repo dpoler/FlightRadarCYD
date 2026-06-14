@@ -1,6 +1,7 @@
-# FlightRadarCYD airline lookup — ICAO code, Airline name
+# FlightRadarCYD airline lookup — ICAO code, Airline name, Telephony callsign
 # Edit this file directly on GitHub; changes take effect on next device boot (no re-flash needed).
-# Format: ICAO,Name   (lines starting with # are ignored)
+# Format: ICAO,Name,CALLSIGN   (callsign optional; lines starting with # are ignored)
+# Maximum 250 entries (DRAM constraint)
 AAL,American Airlines
 AAR,Asiana Airlines
 AAY,Allegiant Air

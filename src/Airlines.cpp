@@ -6,8 +6,6 @@
 #define AIRLINES_URL \
   "https://raw.githubusercontent.com/dpoler/FlightRadarCYD/main/airlines.csv"
 
-struct AirlineEntry { char code[4]; char name[26]; };
-
 static AirlineEntry g_airlines[AIRLINES_MAX];
 static int          g_airline_count = 0;
 
@@ -42,15 +40,19 @@ bool airlinesLoad() {
       pos++;
       continue;
     }
-    int comma = body.indexOf(',', pos);
-    if (comma < 0) break;
-    int eol = body.indexOf('\n', comma);
+    int comma1 = body.indexOf(',', pos);
+    if (comma1 < 0) break;
+    int eol = body.indexOf('\n', comma1);
     if (eol < 0) eol = len;
 
-    String icao = body.substring(pos, comma);
-    String name = body.substring(comma + 1, eol);
-    icao.trim();
-    name.trim();
+    // Optional third field: ICAO,Name,Callsign
+    int comma2 = body.indexOf(',', comma1 + 1);
+    bool hasCallsign = (comma2 >= 0 && comma2 < eol);
+
+    String icao     = body.substring(pos, comma1);
+    String name     = body.substring(comma1 + 1, hasCallsign ? comma2 : eol);
+    String cs       = hasCallsign ? body.substring(comma2 + 1, eol) : String();
+    icao.trim(); name.trim(); cs.trim();
 
     int ilen = (int)icao.length();
     if (ilen >= 2 && ilen <= 3 && name.length() > 0) {
@@ -58,6 +60,8 @@ bool airlinesLoad() {
       g_airlines[g_airline_count].code[3] = '\0';
       strncpy(g_airlines[g_airline_count].name, name.c_str(), 25);
       g_airlines[g_airline_count].name[25] = '\0';
+      strncpy(g_airlines[g_airline_count].callsign, cs.c_str(), 15);
+      g_airlines[g_airline_count].callsign[15] = '\0';
       g_airline_count++;
     }
     pos = eol + 1;
@@ -67,7 +71,7 @@ bool airlinesLoad() {
   return g_airline_count > 0;
 }
 
-const char *airlineLookup(const char *callsign) {
+const AirlineEntry *airlineLookup(const char *callsign) {
   char prefix[4] = {0, 0, 0, 0};
   int  plen = 0;
   while (plen < 3 && callsign[plen] >= 'A' && callsign[plen] <= 'Z') {
@@ -82,6 +86,6 @@ const char *airlineLookup(const char *callsign) {
 
   for (int i = 0; i < g_airline_count; i++)
     if (strcmp(prefix, g_airlines[i].code) == 0)
-      return g_airlines[i].name;
+      return &g_airlines[i];
   return nullptr;
 }

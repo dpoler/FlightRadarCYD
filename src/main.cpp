@@ -679,15 +679,21 @@ static void drawDetail(int idx) {
   gfx->setTextSize(1);
   gfx->setCursor(4, py + 24);
   {
-    const char *airline  = airlineLookup(f.callsign);
-    bool        hasType  = f.ac_type[0]  != '\0';
-    bool        hasMaker = f.ac_maker[0] != '\0';
+    const AirlineEntry *airline = airlineLookup(f.callsign);
+    bool hasType  = f.ac_type[0]  != '\0';
+    bool hasMaker = f.ac_maker[0] != '\0';
     buf[0] = '\0';
-    if (airline && hasType)
-      snprintf(buf, sizeof(buf), "%s  %s", airline, f.ac_type);  // drop maker — keeps line short
-    else if (airline)
-      strncpy(buf, airline, sizeof(buf) - 1);
-    else if (hasType && hasMaker)
+    if (airline) {
+      bool hasCs = airline->callsign[0] != '\0';
+      if (hasCs && hasType)
+        snprintf(buf, sizeof(buf), "%s (%s) %s", airline->name, airline->callsign, f.ac_type);
+      else if (hasCs)
+        snprintf(buf, sizeof(buf), "%s (%s)", airline->name, airline->callsign);
+      else if (hasType)
+        snprintf(buf, sizeof(buf), "%s  %s", airline->name, f.ac_type);
+      else
+        strncpy(buf, airline->name, sizeof(buf) - 1);
+    } else if (hasType && hasMaker)
       snprintf(buf, sizeof(buf), "%s %s", f.ac_maker, f.ac_type);
     else if (hasType)
       strncpy(buf, f.ac_type, sizeof(buf) - 1);

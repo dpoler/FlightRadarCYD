@@ -1,6 +1,12 @@
 #pragma once
 
-#define AIRLINES_MAX 400
+#define AIRLINES_MAX 250
 
-bool        airlinesLoad();
-const char *airlineLookup(const char *callsign);
+struct AirlineEntry {
+  char code[4];
+  char name[26];
+  char callsign[16];
+};
+
+bool               airlinesLoad();
+const AirlineEntry *airlineLookup(const char *callsign);
