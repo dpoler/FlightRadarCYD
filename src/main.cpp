@@ -898,7 +898,7 @@ void loop() {
   if (fc_fetch_done) {
     fc_fetch_done = false;
     updateStats();
-    fc_last_fetch = millis();
+    if (fc_fetch_ok) fc_last_fetch = millis();
     fc_detail_idx = -1;
     redraw();
     if (fc_fetch_ok && fc_client_id[0] != '\0') updateTrails();
