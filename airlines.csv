@@ -2,163 +2,163 @@
 # Edit this file directly on GitHub; changes take effect on next device boot (no re-flash needed).
 # Format: ICAO,Name,CALLSIGN   (callsign optional; lines starting with # are ignored)
 # Maximum 250 entries (DRAM constraint)
-AAL,American Airlines
-AAR,Asiana Airlines
-AAY,Allegiant Air
-ABX,ABX Air
-ABY,Air Arabia
-ACA,Air Canada
-AEA,Air Europa
-AEE,Aegean Airlines
-AFL,Aeroflot
-AFR,Air France
-AIC,Air India
-AIP,Alpine Air Express
-AMX,Aeromexico
-ANA,All Nippon Airways
-ANZ,Air New Zealand
-ARG,Aerolineas Argentinas
-ASA,Alaska Airlines
-ASH,Mesa Airlines
-ATN,Air Transport Intl
-AUA,Austrian Airlines
-AVA,Avianca
-AWI,Air Wisconsin
-AZA,ITA Airways
-AZU,Azul Airlines
-BAW,British Airways
-BEL,Brussels Airlines
-BLK,Aero Black
-BOE,Boeing
-BTI,Air Baltic
-BTQ,Boutique Air
-BWA,Caribbean Airlines
-CAL,China Airlines
-CCA,Air China
-CEB,Cebu Pacific
-CES,China Eastern
-CFG,Condor
-CHH,Hainan Airlines
-CJT,Cargojet
-CKS,Kalitta Air
-CLX,Cargolux
-CMP,Copa Airlines
-CPA,Cathay Pacific
-CSN,China Southern
-CXA,Xiamen Airlines
-CXK,ATP Flight School
-DAH,Air Algerie
-DAL,Delta Air Lines
-DLH,Lufthansa
-EDG,Jet Edge
-EDV,Endeavor Air
-EIN,Aer Lingus
-EJA,Executive Jet Aviation
-EJM,Executive Jet Mgmt
-ELY,El Al
-ENY,Envoy Air
-EPI,Epic Flight Academy
-ETD,Etihad Airways
-ETH,Ethiopian Airlines
-EWG,Eurowings
-EXS,Jet2
-EZY,easyJet
-FDB,flydubai
-FDX,FedEx
-FFT,Frontier Airlines
-FIN,Finnair
-FSI,FlightSafety Intl
-GEC,Lufthansa Cargo
-GFA,Gulf Air
-GJS,GoJet Airlines
-GLO,GOL Airlines
-GLT,Aero Charter
-GTI,Atlas Air
-HAL,Hawaiian Airlines
-HVN,Vietnam Airlines
-IBE,Iberia
-ICE,Icelandair
-IGO,IndiGo
-IJA,Intl Jet Aviation Svcs
-IPD,Business Aviators Inc
-JAS,Jet Aviation Flight Services
-JAL,Japan Airlines
-JBU,JetBlue Airways
-JIA,PSA Airlines
-JRE,flyExclusive
-JSX,JSX
-JZA,Jazz Aviation
-KAL,Korean Air
-KLM,KLM
-KOW,Baker Aviation
-KQA,Kenya Airways
-LAN,LATAM Airlines
-LBQ,Quest Diagnostics
-LOT,LOT Polish Airlines
-LXJ,Flexjet
-LYM,Key Lime Air
-MAS,Malaysia Airlines
-MEA,Middle East Airlines
-MSR,EgyptAir
-MXY,Breeze Airways
-NAX,Norwegian Air
-NCB,Northern Air Cargo
-NJE,NetJets Europe
-NKS,Spirit Airlines
-OAL,Olympic Air
-PAC,Polar Air Cargo
-PAL,Philippine Airlines
-PCH,Pilatus Aircraft
-PDT,Piedmont Airlines
-PGT,Pegasus Airlines
-POE,Porter Airlines
-PRE,Precision Airlines
-PWR,Quanta Aviation Svcs
-QFA,Qantas
-QTR,Qatar Airways
-QXE,Horizon Air
-RAM,Royal Air Maroc
-RBA,Royal Brunei Airlines
-RCH,Air Mobility Command
-RJA,Royal Jordanian
-ROT,TAROM
-RPA,Republic Airways
-RYR,Ryanair
-SAA,South African Airways
-SAS,Scandinavian Airlines
-SCX,Sun Country Airlines
-SEJ,SpiceJet
-SIA,Singapore Airlines
-SKW,SkyWest Airlines
-SOO,Southern Air
-SVA,Saudia
-SWA,Southwest Airlines
-SWR,SWISS
-TAM,LATAM Brasil
-TAP,TAP Air Portugal
-TCN,Jet Excellence
-TGW,Scoot
-THA,Thai Airways
-THY,Turkish Airlines
-TOM,TUI Airways
-TRA,Transavia
-TSC,Air Transat
-TWY,Solarius Aviation
-UAE,Emirates
-UAL,United Airlines
-UPS,UPS Airlines
-USC,AirNet Express
-UZB,Uzbekistan Airways
-VIR,Virgin Atlantic
-VIV,VivaAerobus
-VJC,VietJet Air
-VJT,VistaJet
-VLG,Vueling
-VOI,Volaris
-VOZ,Virgin Australia
-VTE,Contour Airlines
-WJA,WestJet
-WUP,Wheels Up
-WWG,Aereo WWG
-WZZ,Wizz Air
-XSR,Airshare
+AAL,American Airlines,AMERICAN
+AAR,Asiana Airlines,ASIANA
+AAY,Allegiant Air,ALLEGIANT
+ABX,ABX Air,
+ABY,Air Arabia,
+ACA,Air Canada,AIR CANADA
+AEA,Air Europa,EUROPA
+AEE,Aegean Airlines,AEGEAN
+AFL,Aeroflot,AEROFLOT
+AFR,Air France,AIR FRANCE
+AIC,Air India,AIR INDIA
+AIP,Alpine Air Express,
+AMX,Aeromexico,AEROMEXICO
+ANA,All Nippon Airways,ALL NIPPON
+ANZ,Air New Zealand,NEW ZEALAND
+ARG,Aerolineas Argentinas,ARGENTINA
+ASA,Alaska Airlines,ALASKA
+ASH,Mesa Airlines,
+ATN,Air Transport Intl,
+AUA,Austrian Airlines,AUSTRIAN
+AVA,Avianca,AVIANCA
+AWI,Air Wisconsin,
+AZA,ITA Airways,
+AZU,Azul Airlines,
+BAW,British Airways,SPEEDBIRD
+BEL,Brussels Airlines,
+BLK,Aero Black,
+BOE,Boeing,
+BTI,Air Baltic,
+BTQ,Boutique Air,
+BWA,Caribbean Airlines,CARIBBEAN
+CAL,China Airlines,DYNASTY
+CCA,Air China,AIR CHINA
+CEB,Cebu Pacific,
+CES,China Eastern,CHINA EASTERN
+CFG,Condor,CONDOR
+CHH,Hainan Airlines,HAINAN
+CJT,Cargojet,
+CKS,Kalitta Air,
+CLX,Cargolux,CARGOLUX
+CMP,Copa Airlines,COPA
+CPA,Cathay Pacific,CATHAY
+CSN,China Southern,CHINA SOUTHERN
+CXA,Xiamen Airlines,
+CXK,ATP Flight School,
+DAH,Air Algerie,
+DAL,Delta Air Lines,DELTA
+DLH,Lufthansa,LUFTHANSA
+EDG,Jet Edge,
+EDV,Endeavor Air,
+EIN,Aer Lingus,SHAMROCK
+EJA,Executive Jet Aviation,
+EJM,Executive Jet Mgmt,
+ELY,El Al,ELAL
+ENY,Envoy Air,
+EPI,Epic Flight Academy,
+ETD,Etihad Airways,ETIHAD
+ETH,Ethiopian Airlines,ETHIOPIAN
+EWG,Eurowings,EUROWINGS
+EXS,Jet2,
+EZY,easyJet,EASY
+FDB,flydubai,FLYDUBAI
+FDX,FedEx,FEDEX
+FFT,Frontier Airlines,FRONTIER
+FIN,Finnair,FINNAIR
+FSI,FlightSafety Intl,
+GEC,Lufthansa Cargo,
+GFA,Gulf Air,GULF AIR
+GJS,GoJet Airlines,
+GLO,GOL Airlines,
+GLT,Aero Charter,
+GTI,Atlas Air,
+HAL,Hawaiian Airlines,HAWAIIAN
+HVN,Vietnam Airlines,
+IBE,Iberia,IBERIA
+ICE,Icelandair,ICEAIR
+IGO,IndiGo,INDIGO
+IJA,Intl Jet Aviation Svcs,
+IPD,Business Aviators Inc,
+JAS,Jet Aviation Flight Services,
+JAL,Japan Airlines,JAPANAIR
+JBU,JetBlue Airways,JETBLUE
+JIA,PSA Airlines,
+JRE,flyExclusive,
+JSX,JSX,
+JZA,Jazz Aviation,JAZZ
+KAL,Korean Air,KOREAN AIR
+KLM,KLM,KLM
+KOW,Baker Aviation,
+KQA,Kenya Airways,KENYA
+LAN,LATAM Airlines,
+LBQ,Quest Diagnostics,
+LOT,LOT Polish Airlines,LOT
+LXJ,Flexjet,
+LYM,Key Lime Air,
+MAS,Malaysia Airlines,MALAYSIAN
+MEA,Middle East Airlines,
+MSR,EgyptAir,EGYPTAIR
+MXY,Breeze Airways,
+NAX,Norwegian Air,NORWEGIAN
+NCB,Northern Air Cargo,
+NJE,NetJets Europe,
+NKS,Spirit Airlines,
+OAL,Olympic Air,OLYMPIC
+PAC,Polar Air Cargo,
+PAL,Philippine Airlines,PHILIPPINE
+PCH,Pilatus Aircraft,
+PDT,Piedmont Airlines,PIEDMONT
+PGT,Pegasus Airlines,
+POE,Porter Airlines,
+PRE,Precision Airlines,
+PWR,Quanta Aviation Svcs,
+QFA,Qantas,QANTAS
+QTR,Qatar Airways,QATARI
+QXE,Horizon Air,
+RAM,Royal Air Maroc,
+RBA,Royal Brunei Airlines,BRUNEI
+RCH,Air Mobility Command,REACH
+RJA,Royal Jordanian,JORDAN
+ROT,TAROM,TAROM
+RPA,Republic Airways,
+RYR,Ryanair,RYANAIR
+SAA,South African Airways,SPRINGBOK
+SAS,Scandinavian Airlines,SCANDINAVIAN
+SCX,Sun Country Airlines,
+SEJ,SpiceJet,
+SIA,Singapore Airlines,SINGAPORE
+SKW,SkyWest Airlines,SKYWEST
+SOO,Southern Air,
+SVA,Saudia,SAUDIA
+SWA,Southwest Airlines,SOUTHWEST
+SWR,SWISS,SWISS
+TAM,LATAM Brasil,
+TAP,TAP Air Portugal,AIR PORTUGAL
+TCN,Jet Excellence,
+TGW,Scoot,
+THA,Thai Airways,THAI
+THY,Turkish Airlines,TURKISH
+TOM,TUI Airways,
+TRA,Transavia,TRANSAVIA
+TSC,Air Transat,TRANSAT
+TWY,Solarius Aviation,
+UAE,Emirates,EMIRATES
+UAL,United Airlines,UNITED
+UPS,UPS Airlines,UPS
+USC,AirNet Express,
+UZB,Uzbekistan Airways,UZBEK
+VIR,Virgin Atlantic,VIRGIN
+VIV,VivaAerobus,
+VJC,VietJet Air,
+VJT,VistaJet,
+VLG,Vueling,VUELING
+VOI,Volaris,
+VOZ,Virgin Australia,
+VTE,Contour Airlines,
+WJA,WestJet,WESTJET
+WUP,Wheels Up,
+WWG,Aereo WWG,
+WZZ,Wizz Air,WIZZAIR
+XSR,Airshare,
