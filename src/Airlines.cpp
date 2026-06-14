@@ -6,26 +6,24 @@
 #define AIRLINES_URL \
   "https://raw.githubusercontent.com/dpoler/FlightRadarCYD/main/airlines.csv"
 
-static AirlineEntry g_airlines[AIRLINES_MAX];
-static int          g_airline_count = 0;
+static AirlineEntry     g_airlines[AIRLINES_MAX];
+static int              g_airline_count = 0;
+static WiFiClientSecure *s_client = nullptr;
 
 bool airlinesLoad() {
-  WiFiClientSecure *client = new WiFiClientSecure;
-  if (!client) return false;
-  client->setInsecure();
+  if (!s_client) { s_client = new WiFiClientSecure; s_client->setInsecure(); }
 
   unsigned long t0 = millis();
   String body;
   {
     HTTPClient https;
-    https.begin(*client, AIRLINES_URL);
+    https.begin(*s_client, AIRLINES_URL);
     https.setTimeout(15000);
     int code = https.GET();
     Serial.printf("[Airlines] HTTP %d in %lums\n", code, millis() - t0);
     if (code == HTTP_CODE_OK) body = https.getString();
     https.end();
   }
-  delete client;
 
   if (body.isEmpty()) return false;
 

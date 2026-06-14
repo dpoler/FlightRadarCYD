@@ -7,8 +7,10 @@ FlightData fc_flights[MAX_FLIGHTS];
 int        fc_flight_count  = 0;
 int        fc_total_in_bbox = 0;
 
-static char          fc_access_token[2048] = "";
-static unsigned long fc_token_expiry_ms    = 0;
+static char              fc_access_token[2048] = "";
+static unsigned long     fc_token_expiry_ms    = 0;
+static WiFiClientSecure *s_token_client  = nullptr;
+static WiFiClientSecure *s_states_client = nullptr;
 
 static float fc_haversine(float lat1, float lon1, float lat2, float lon2) {
   const float R = 6371.0f;
@@ -58,15 +60,13 @@ static bool fc_fetch_token(const char *clientId, const char *clientSecret) {
     "https://auth.opensky-network.org/auth/realms/opensky-network"
     "/protocol/openid-connect/token";
 
-  WiFiClientSecure *client = new WiFiClientSecure;
-  if (!client) return false;
-  client->setInsecure();
+  if (!s_token_client) { s_token_client = new WiFiClientSecure; s_token_client->setInsecure(); }
 
   unsigned long t0 = millis();
   String body;
   {
     HTTPClient https;
-    https.begin(*client, tokenUrl);
+    https.begin(*s_token_client, tokenUrl);
     https.setTimeout(15000);
     https.addHeader("Content-Type", "application/x-www-form-urlencoded");
     String payload = "grant_type=client_credentials&client_id=";
@@ -78,7 +78,6 @@ static bool fc_fetch_token(const char *clientId, const char *clientSecret) {
     if (code == HTTP_CODE_OK) body = https.getString();
     https.end();
   }
-  delete client;
 
   if (body.isEmpty()) return false;
 
@@ -121,13 +120,11 @@ bool openSkyFetch(float userLat, float userLon, float radiusKm,
   if (hasAuth && (fc_access_token[0] == '\0' || millis() >= fc_token_expiry_ms))
     hasAuth = fc_fetch_token(clientId, clientSecret);
 
-  WiFiClientSecure *client = new WiFiClientSecure;
-  if (!client) return false;
-  client->setInsecure();
+  if (!s_states_client) { s_states_client = new WiFiClientSecure; s_states_client->setInsecure(); }
   String body;
   {
     HTTPClient https;
-    https.begin(*client, url);
+    https.begin(*s_states_client, url);
     https.setTimeout(20000);
     https.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     if (hasAuth) https.addHeader("Authorization", String("Bearer ") + fc_access_token);
@@ -136,7 +133,6 @@ bool openSkyFetch(float userLat, float userLon, float radiusKm,
     if (code == HTTP_CODE_OK) body = https.getString();
     https.end();
   }
-  delete client;
 
   if (body.isEmpty()) return false;
 
