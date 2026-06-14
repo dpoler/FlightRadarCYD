@@ -63,7 +63,7 @@ static bool fc_fetch_token(const char *clientId, const char *clientSecret) {
   if (!s_token_client) { s_token_client = new WiFiClientSecure; s_token_client->setInsecure(); }
 
   unsigned long t0 = millis();
-  String body;
+  DynamicJsonDocument doc(4096);
   {
     HTTPClient https;
     https.begin(*s_token_client, tokenUrl);
@@ -75,16 +75,13 @@ static bool fc_fetch_token(const char *clientId, const char *clientSecret) {
     payload += clientSecret;
     int code = https.POST(payload);
     Serial.printf("[OpenSky] Token HTTP %d in %lums\n", code, millis() - t0);
-    if (code == HTTP_CODE_OK) body = https.getString();
+    if (code != HTTP_CODE_OK) { https.end(); return false; }
+    if (deserializeJson(doc, https.getStream())) {
+      Serial.println("[OpenSky] Token parse failed");
+      https.end();
+      return false;
+    }
     https.end();
-  }
-
-  if (body.isEmpty()) return false;
-
-  DynamicJsonDocument doc(4096);
-  if (deserializeJson(doc, body)) {
-    Serial.println("[OpenSky] Token parse failed");
-    return false;
   }
 
   const char *token = doc["access_token"] | "";
@@ -121,6 +118,7 @@ bool openSkyFetch(float userLat, float userLon, float radiusKm,
     hasAuth = fc_fetch_token(clientId, clientSecret);
 
   if (!s_states_client) { s_states_client = new WiFiClientSecure; s_states_client->setInsecure(); }
+  Serial.printf("[Heap] free=%u min=%u\n", ESP.getFreeHeap(), ESP.getMinFreeHeap());
   String body;
   {
     HTTPClient https;
