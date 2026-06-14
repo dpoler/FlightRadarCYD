@@ -8,8 +8,9 @@
 #define MAX_HOUR_SEEN 500
 
 // Public state
-int        stats_unique_count = 0;
-int        stats_fetch_count  = 0;
+int        stats_unique_count    = 0;
+int        stats_fetch_count     = 0;
+int        stats_fetch_fail_count = 0;
 int        stats_peak_count   = 0;
 float      stats_closest_dist = 1e9f;
 StatRecord stats_closest      = {};
@@ -99,8 +100,9 @@ void expireOldRecords() {
 }
 
 void resetStats() {
-  stats_unique_count  = 0;
-  stats_fetch_count   = 0;
+  stats_unique_count      = 0;
+  stats_fetch_count       = 0;
+  stats_fetch_fail_count  = 0;
   stats_peak_count    = 0;
   stats_peak_ts       = 0;
   stats_peak_hhmm[0]  = '\0';
@@ -253,13 +255,14 @@ void loadStats() {
 
   expireOldRecords();
 
-  Serial.printf("[Stats] Loaded: save_ts=%lu unique=%d fetches=%d\n",
-                (unsigned long)stats_save_ts, stats_unique_count, stats_fetch_count);
+  Serial.printf("[Stats] Loaded: save_ts=%lu unique=%d\n",
+                (unsigned long)stats_save_ts, stats_unique_count);
 }
 
-void updateStats() {
+void updateStats(bool fetchOk) {
   expireOldRecords();
-  stats_fetch_count++;
+  if (fetchOk) stats_fetch_count++;
+  else         stats_fetch_fail_count++;
 
   if (fc_flight_count > stats_peak_count) {
     stats_peak_count = fc_flight_count;

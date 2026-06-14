@@ -81,8 +81,10 @@ static unsigned long lastTouchTime = 0;
 
 static int  fc_mode         = MODE_RADAR;
 static int  fc_detail_idx   = -1;          // -1 = no detail overlay
-static unsigned long fc_last_fetch = 0;
-static bool fc_fetch_ok = false;
+static unsigned long fc_last_fetch   = 0;  // last successful fetch (drives "upd" display)
+static unsigned long fc_last_attempt = 0;  // last fetch attempt, success or failure (throttles retries)
+static bool fc_fetch_ok       = false;
+static bool fc_wifi_connected = true;   // tracks transitions for logging/redraw
 static volatile bool fc_fetching   = false;
 static volatile bool fc_fetch_done = false;
 
@@ -135,8 +137,9 @@ static void drawHeader() {
   char buf[32];
 
   // Title — symbol color reflects fetch state
-  uint16_t symColor = fc_fetching                         ? COL_ACCENT :
-                      (fc_fetch_ok || fc_last_fetch == 0) ? COL_TITLE  : RGB565_RED;
+  uint16_t symColor = fc_fetching        ? COL_ACCENT :
+                      !fc_wifi_connected ? RGB565_RED  :
+                      (fc_fetch_ok || fc_last_fetch == 0) ? COL_TITLE : RGB565_RED;
   gfx->setTextSize(1);
   gfx->setCursor(4, 6);
   gfx->setTextColor(symColor);
@@ -415,6 +418,8 @@ static void drawStats() {
     statRow(CONTENT_Y + 40, "Max:",     stats_peak_count);
     statRow(CONTENT_Y + 54, "Unique:",  stats_unique_count);
     statRow(CONTENT_Y + 68, "Updates:", stats_fetch_count);
+    if (stats_fetch_fail_count > 0)
+      statRow(CONTENT_Y + 82, "Errors:",  stats_fetch_fail_count);
   }
 
   // Right panel: bar chart + legend
@@ -902,7 +907,8 @@ void loop() {
   // Post-fetch: runs on core 1 (display-safe) — must check before starting a new fetch
   if (fc_fetch_done) {
     fc_fetch_done = false;
-    updateStats();
+    updateStats(fc_fetch_ok);
+    fc_last_attempt = millis();
     if (fc_fetch_ok) fc_last_fetch = millis();
     fc_detail_idx = -1;
     redraw();
@@ -911,7 +917,22 @@ void loop() {
 
   // Kick off background fetch when due
   unsigned long fetchInterval = (fc_client_id[0] != '\0') ? OPENSKY_INTERVAL_AUTH : OPENSKY_INTERVAL_ANON;
-  if (!fc_fetching && (fc_last_fetch == 0 || (millis() - fc_last_fetch) > fetchInterval)) {
+  if (!fc_fetching && (fc_last_attempt == 0 || (millis() - fc_last_attempt) > fetchInterval)) {
+    if (WiFi.status() != WL_CONNECTED) {
+      if (fc_wifi_connected) {
+        fc_wifi_connected = false;
+        stats_fetch_fail_count++;
+        Serial.printf("[WiFi] Connection lost, reconnecting...\n");
+        redraw();
+      }
+      WiFi.reconnect();
+      fc_last_attempt = millis();
+      return;
+    }
+    if (!fc_wifi_connected) {
+      fc_wifi_connected = true;
+      Serial.printf("[WiFi] Reconnected\n");
+    }
     fc_fetching   = true;
     fc_fetch_done = false;
     drawHeader();

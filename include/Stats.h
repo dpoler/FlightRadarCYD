@@ -14,6 +14,7 @@ struct StatRecord {
 
 extern int        stats_unique_count;
 extern int        stats_fetch_count;
+extern int        stats_fetch_fail_count;
 extern int        stats_peak_count;
 extern float      stats_closest_dist;
 extern StatRecord stats_closest;
@@ -33,6 +34,6 @@ extern volatile bool stats_type_arrived;
 void resetStats();
 void saveStats();
 void loadStats();
-void updateStats();
+void updateStats(bool fetchOk);
 void expireOldRecords();
 void startTypesFetch();
