@@ -119,74 +119,75 @@ bool openSkyFetch(float userLat, float userLon, float radiusKm,
 
   if (!s_states_client) { s_states_client = new WiFiClientSecure; s_states_client->setInsecure(); }
   Serial.printf("[Heap] free=%u min=%u\n", ESP.getFreeHeap(), ESP.getMinFreeHeap());
-  String body;
+
+  fc_flight_count  = 0;
+  fc_total_in_bbox = 0;
+
   {
     HTTPClient https;
     https.begin(*s_states_client, url);
     https.setTimeout(20000);
+    https.useHTTP10(true);  // avoids chunked transfer encoding so getStream() is plain JSON
     https.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     if (hasAuth) https.addHeader("Authorization", String("Bearer ") + fc_access_token);
     int code = https.GET();
     Serial.printf("[OpenSky] HTTP %d in %lums\n", code, millis() - t0);
-    if (code == HTTP_CODE_OK) body = https.getString();
+    if (code != HTTP_CODE_OK) { https.end(); return false; }
+
+    DynamicJsonDocument doc(32768);
+    DeserializationError err = deserializeJson(doc, https.getStream());
     https.end();
-  }
 
-  if (body.isEmpty()) return false;
+    if (err) {
+      Serial.printf("[OpenSky] JSON parse failed: %s\n", err.c_str());
+      return false;
+    }
 
-  DynamicJsonDocument doc(32768);
-  if (deserializeJson(doc, body)) {
-    Serial.println("[OpenSky] JSON parse failed");
-    return false;
-  }
+    JsonArray states = doc["states"];
+    if (states.isNull()) {
+      Serial.println("[OpenSky] No aircraft in bounding box");
+      return true;
+    }
 
-  JsonArray states = doc["states"];
-  fc_flight_count  = 0;
-  fc_total_in_bbox = 0;
+    fc_total_in_bbox = states.size();
 
-  if (states.isNull()) {
-    Serial.println("[OpenSky] No aircraft in bounding box");
-    return true;
-  }
+    for (JsonArray state : states) {
+      if (state[6].isNull() || state[5].isNull()) continue;
+      float lat  = state[6].as<float>();
+      float lon  = state[5].as<float>();
+      float dist = fc_haversine(userLat, userLon, lat, lon);
+      if (dist > radiusKm) continue;
 
-  fc_total_in_bbox = states.size();
+      FlightData f;
+      const char *icao = state[0] | "??????";
+      strncpy(f.icao, icao, sizeof(f.icao) - 1);
+      f.icao[sizeof(f.icao) - 1] = '\0';
 
-  for (JsonArray state : states) {
-    if (state[6].isNull() || state[5].isNull()) continue;
-    float lat  = state[6].as<float>();
-    float lon  = state[5].as<float>();
-    float dist = fc_haversine(userLat, userLon, lat, lon);
-    if (dist > radiusKm) continue;
+      String cs = String(state[1] | "");
+      cs.trim();
+      if (cs.isEmpty()) cs = String(f.icao);
+      strncpy(f.callsign, cs.c_str(), sizeof(f.callsign) - 1);
+      f.callsign[sizeof(f.callsign) - 1] = '\0';
 
-    FlightData f;
-    const char *icao = state[0] | "??????";
-    strncpy(f.icao, icao, sizeof(f.icao) - 1);
-    f.icao[sizeof(f.icao) - 1] = '\0';
+      const char *ctry = state[2] | "";
+      strncpy(f.country, ctry, sizeof(f.country) - 1);
+      f.country[sizeof(f.country) - 1] = '\0';
 
-    String cs = String(state[1] | "");
-    cs.trim();
-    if (cs.isEmpty()) cs = String(f.icao);
-    strncpy(f.callsign, cs.c_str(), sizeof(f.callsign) - 1);
-    f.callsign[sizeof(f.callsign) - 1] = '\0';
+      f.lat       = lat;
+      f.lon       = lon;
+      f.alt_m     = state[7].isNull()  ? NAN  : state[7].as<float>();
+      f.on_ground = state[8]           | false;
+      f.vel_ms    = state[9].isNull()  ? 0.0f : state[9].as<float>();
+      f.track     = state[10].isNull() ? 0.0f : state[10].as<float>();
+      f.vert_ms   = state[11].isNull() ? NAN  : state[11].as<float>();
+      f.dist_km      = dist;
+      f.bearing      = fc_bearing_calc(userLat, userLon, lat, lon);
+      f.ac_type[0]   = '\0';
+      f.ac_maker[0]  = '\0';
+      f.type_fetched = false;
 
-    const char *ctry = state[2] | "";
-    strncpy(f.country, ctry, sizeof(f.country) - 1);
-    f.country[sizeof(f.country) - 1] = '\0';
-
-    f.lat       = lat;
-    f.lon       = lon;
-    f.alt_m     = state[7].isNull()  ? NAN  : state[7].as<float>();
-    f.on_ground = state[8]           | false;
-    f.vel_ms    = state[9].isNull()  ? 0.0f : state[9].as<float>();
-    f.track     = state[10].isNull() ? 0.0f : state[10].as<float>();
-    f.vert_ms   = state[11].isNull() ? NAN  : state[11].as<float>();
-    f.dist_km      = dist;
-    f.bearing      = fc_bearing_calc(userLat, userLon, lat, lon);
-    f.ac_type[0]   = '\0';
-    f.ac_maker[0]  = '\0';
-    f.type_fetched = false;
-
-    fc_insert_sorted(f);
+      fc_insert_sorted(f);
+    }
   }
 
   Serial.printf("[OpenSky] bbox=%d  circle=%d  shown=%d  total=%lums\n",
