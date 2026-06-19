@@ -27,20 +27,22 @@ Arduino_ESP32DSIPanel *dsiPanel = new Arduino_ESP32DSIPanel(
     10 /*vsync_pw*/,  23 /*vsync_bp*/,  12 /*vsync_fp*/,
     GFX_NOT_DEFINED /*prefer_speed*/, 550 /*lane_bit_rate Mbps*/);
 
+// auto_flush=false: draw calls write to the frame buffer silently;
+// gfx->flush() sends the complete frame in one shot — no partial-update flash.
 Arduino_GFX *gfx = new Arduino_DSI_Display(
     LCD_W, LCD_H, dsiPanel,
-    0 /*rotation*/, true /*auto_flush*/,
+    0 /*rotation*/, false /*auto_flush*/,
     LCD_RST,
     jd9165_init_operations, sizeof(jd9165_init_operations) / sizeof(jd9165_init_operations[0]));
 
 // ---------------------------------------------------------------------------
-// Touch — GT911 capacitive, I2C on GPIO7/8, RST=22, INT=21
-// GT911 returns coordinates directly in screen space — no calibration needed
+// Touch — GT911 capacitive, I2C on GPIO7/8
+// RST and INT are not exposed on JC1060P470C — use -1 (polling mode, no reset)
 // ---------------------------------------------------------------------------
 #define TP_SDA  7
 #define TP_SCL  8
-#define TP_RST 22
-#define TP_INT 21
+#define TP_RST -1
+#define TP_INT -1
 #define TOUCH_DEBOUNCE 350
 
 // BOOT button — GPIO35 on ESP32-P4 (active LOW), used for mode cycling
@@ -91,10 +93,11 @@ static unsigned long lastTouchTime = 0;
 #define MODE_STATS 1
 #define MODE_LIST  2
 
-static int  fc_mode           = MODE_RADAR;
-static int  fc_detail_idx     = -1;
-static unsigned long fc_last_fetch   = 0;
-static unsigned long fc_last_attempt = 0;
+static int  fc_mode              = MODE_RADAR;
+static int  fc_detail_idx        = -1;
+static unsigned long fc_last_fetch        = 0;
+static unsigned long fc_last_attempt      = 0;
+static unsigned long fc_last_header_draw  = 0;
 static bool fc_fetch_ok        = false;
 static bool fc_wifi_connected  = true;
 static int  fc_wifi_fail_count = 0;
@@ -114,6 +117,7 @@ static void showStatus(const char *msg) {
   gfx->setTextSize(2);
   gfx->setCursor(8, 10);
   gfx->print(msg);
+  gfx->flush();
   Serial.println(msg);
 }
 
@@ -353,18 +357,18 @@ static void drawRadar() {
     if (sx < 2 || sx > LCD_W - 2 || sy < CONTENT_Y + 2 || sy > CONTENT_Y + CONTENT_H - 2) continue;
 
     uint16_t col = acColor(f);
-    gfx->fillCircle(sx, sy, 4, col);
+    gfx->fillCircle(sx, sy, 8, col);
 
     if (!f.on_ground) {
-      int hx = sx + (int)(sinf(track_rad) * 14);
-      int hy = sy - (int)(cosf(track_rad) * 14);
+      int hx = sx + (int)(sinf(track_rad) * 24);
+      int hy = sy - (int)(cosf(track_rad) * 24);
       gfx->drawLine(sx, sy, hx, hy, col);
     }
 
     if (f.dist_km <= fc_radius_km * 0.5f) {
       gfx->setTextColor(col);
-      gfx->setTextSize(1);
-      gfx->setCursor(sx + 6, sy - 4);
+      gfx->setTextSize(2);
+      gfx->setCursor(sx + 10, sy - 8);
       gfx->print(f.callsign);
     }
   }
@@ -469,8 +473,10 @@ static void drawStats() {
 
   gfx->drawFastHLine(0, CONTENT_Y + 256, LCD_W, COL_GRID);
 
-  // Records section — two columns to use the wide screen
-  // Left column: Closest, Highest, Fastest   Right column: Climb, Descent
+  // Records section — two columns, each LCD_W/2 wide.
+  // Column layout (textSize=2 → 12px/char wide, 16px tall):
+  //   label(80px) | cs(120px) | type(100px) | value(right-aligned) | hhmm(60px)
+  // All offsets kept within 496px so right column (x=512) ends by x=1008.
   auto printRecord = [&](int x, int y, const char *label, const StatRecord &r, const char *value) {
     gfx->setTextSize(2);
     gfx->setTextColor(COL_DIM);
@@ -478,31 +484,31 @@ static void drawStats() {
     gfx->print(label);
     if (r.cs[0]) {
       gfx->setTextColor(COL_AC_HIGH);
-      gfx->setCursor(x + 132, y);
+      gfx->setCursor(x + 80, y);
       gfx->print(r.cs);
       if (r.ac_type[0]) {
         gfx->setTextColor(COL_DIM);
-        gfx->setCursor(x + 264, y);
+        gfx->setCursor(x + 200, y);
         gfx->print(r.ac_type);
       }
       gfx->setTextColor(COL_TITLE);
       int vw = (int)strlen(value) * 12;
-      gfx->setCursor(x + 480 - vw, y);
+      gfx->setCursor(x + 420 - vw, y);
       gfx->print(value);
       if (r.hhmm[0]) {
         gfx->setTextColor(COL_DIM);
-        gfx->setCursor(x + 492, y);
+        gfx->setCursor(x + 432, y);
         gfx->print(r.hhmm);
       }
     } else {
       gfx->setTextColor(COL_DIM);
-      gfx->setCursor(x + 132, y);
+      gfx->setCursor(x + 80, y);
       gfx->print("--");
     }
   };
 
   int ry = CONTENT_Y + 270;
-  int col2x = LCD_W / 2 + 4;
+  int col2x = LCD_W / 2;
 
   if (stats_closest.cs[0]) {
     float d = fc_use_miles ? stats_closest_dist * 0.621371f : stats_closest_dist;
@@ -713,6 +719,7 @@ static void redraw() {
   else                            drawList();
   drawFooter();
   if (fc_mode == MODE_LIST && fc_detail_idx >= 0) drawDetail(fc_detail_idx);
+  gfx->flush();
 }
 
 // ---------------------------------------------------------------------------
@@ -806,7 +813,8 @@ void setup() {
   pinMode(LCD_BL, OUTPUT);
   digitalWrite(LCD_BL, HIGH);
 
-  // Touch (GT911 defaults to landscape — no rotation needed)
+  // Touch — explicit Wire init required on P4 before TAMC_GT911::begin()
+  Wire.begin(TP_SDA, TP_SCL);
   ts.begin();
 
   // BOOT button
@@ -877,6 +885,7 @@ void setup() {
   else if (fc_mode == MODE_STATS) drawStats();
   else                            drawList();
   drawFooter();
+  gfx->flush();
 }
 
 // ---------------------------------------------------------------------------
@@ -929,7 +938,10 @@ void loop() {
     fc_fetching   = true;
     fc_fetch_done = false;
     drawHeader();
-    xTaskCreatePinnedToCore(fetchTaskFn, "fetch", 8192, NULL, 1, NULL, 0);
+    gfx->flush();
+    // P4 is RISC-V: TLS stack frames are larger than Xtensa. loop() runs on
+    // core 0 under pioarduino, so pin the task to core 1 to avoid sharing.
+    xTaskCreatePinnedToCore(fetchTaskFn, "fetch", 16384, NULL, 1, NULL, 1);
   }
 
   // Touch
@@ -946,13 +958,21 @@ void loop() {
     }
   }
 
-  // Don't launch while fc_fetching: both tasks pin to core 0, concurrent TLS starves both.
+  // Periodic header refresh — keeps the wall clock and "upd Xm ago" current.
+  if (!fc_fetching && millis() - fc_last_header_draw > 30000) {
+    fc_last_header_draw = millis();
+    drawHeader();
+    gfx->flush();
+  }
+
+  // Don't launch while fc_fetching: both tasks pin to core 1, concurrent TLS starves both.
   if (fc_mode == MODE_STATS && stats_fetching_types && !fc_fetching) {
     startTypesFetch();
     if (stats_type_arrived) {
       stats_type_arrived = false;
       drawStats();
       drawFooter();
+      gfx->flush();
     }
   }
 

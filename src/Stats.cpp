@@ -365,7 +365,14 @@ static void typesFetchTaskFn(void *) {
 
 void startTypesFetch() {
   if (hTypeTask || !stats_types_pending) return;
-  xTaskCreatePinnedToCore(typesFetchTaskFn, "typeFetch", 8192, NULL, 1, &hTypeTask, 0);
+  // On P4 (pioarduino), loop() runs on core 0 — pin to core 1 to avoid sharing.
+  // On original ESP32, loop() runs on core 1 — pin to core 0.
+#ifdef CONFIG_IDF_TARGET_ESP32P4
+  const BaseType_t taskCore = 1;
+#else
+  const BaseType_t taskCore = 0;
+#endif
+  xTaskCreatePinnedToCore(typesFetchTaskFn, "typeFetch", 8192, NULL, 1, &hTypeTask, taskCore);
 }
 
 bool statsTypesFetchBusy() {
