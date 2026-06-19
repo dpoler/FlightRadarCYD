@@ -367,3 +367,7 @@ void startTypesFetch() {
   if (hTypeTask || !stats_types_pending) return;
   xTaskCreatePinnedToCore(typesFetchTaskFn, "typeFetch", 8192, NULL, 1, &hTypeTask, 0);
 }
+
+bool statsTypesFetchBusy() {
+  return hTypeTask != NULL;
+}

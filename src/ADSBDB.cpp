@@ -3,8 +3,6 @@
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 
-static WiFiClientSecure *s_client = nullptr;
-
 bool adsbdbFetchType(FlightData &f, int timeoutMs) {
   if (f.type_fetched) return f.ac_type[0] != '\0';
   f.type_fetched = true;
@@ -14,23 +12,23 @@ bool adsbdbFetchType(FlightData &f, int timeoutMs) {
   unsigned long t0 = millis();
   Serial.printf("[ADSBDB] GET %s\n", url);
 
-  if (!s_client) { s_client = new WiFiClientSecure; s_client->setInsecure(); }
-
-  String body;
-  {
-    HTTPClient https;
-    https.begin(*s_client, url);
-    https.setTimeout(timeoutMs);
-    int code = https.GET();
-    Serial.printf("[ADSBDB] HTTP %d in %lums\n", code, millis() - t0);
-    if (code == HTTP_CODE_OK) body = https.getString();
-    https.end();
-  }
-
-  if (body.isEmpty()) return false;
+  // Local WiFiClientSecure: destructor guarantees TLS context is freed on
+  // every exit path — no stale state carried across calls.
+  WiFiClientSecure client;
+  client.setInsecure();
 
   DynamicJsonDocument doc(2048);
-  if (deserializeJson(doc, body)) return false;
+  {
+    HTTPClient https;
+    https.begin(client, url);
+    https.setTimeout(timeoutMs);
+    https.useHTTP10(true);  // clean connection close after response
+    int code = https.GET();
+    Serial.printf("[ADSBDB] HTTP %d in %lums\n", code, millis() - t0);
+    if (code == HTTP_CODE_OK)
+      deserializeJson(doc, https.getStream());
+    https.end();
+  }  // client destructor runs here → stop() + mbedTLS free
 
   JsonVariant ac = doc["response"]["aircraft"];
   if (ac.isNull()) return false;

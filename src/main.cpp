@@ -923,7 +923,8 @@ void loop() {
 
   // Kick off background fetch when due
   unsigned long fetchInterval = (fc_client_id[0] != '\0') ? OPENSKY_INTERVAL_AUTH : OPENSKY_INTERVAL_ANON;
-  if (!fc_fetching && (fc_last_attempt == 0 || (millis() - fc_last_attempt) > fetchInterval)) {
+  // Don't start while type fetch is running: both tasks pin to core 0, concurrent TLS starves both.
+  if (!fc_fetching && !statsTypesFetchBusy() && (fc_last_attempt == 0 || (millis() - fc_last_attempt) > fetchInterval)) {
     if (WiFi.status() != WL_CONNECTED) {
       if (fc_wifi_connected) {
         fc_wifi_connected = false;
@@ -961,7 +962,9 @@ void loop() {
 
   // Background type lookup — start task when needed, redraw as types arrive.
   // Task runs on core 0; loop() on core 1 is never blocked.
-  if (fc_mode == MODE_STATS && stats_fetching_types) {
+  // Don't launch while fc_fetching: both tasks pin to core 0, so concurrent
+  // TLS sessions starve each other and leave the OpenSky stream timed out.
+  if (fc_mode == MODE_STATS && stats_fetching_types && !fc_fetching) {
     startTypesFetch();
     if (stats_type_arrived) {
       stats_type_arrived = false;

@@ -55,6 +55,9 @@ static void fc_insert_sorted(const FlightData &f) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Token fetch (ArduinoJson fine here — response is ~500 bytes)
+// ---------------------------------------------------------------------------
 static bool fc_fetch_token(const char *clientId, const char *clientSecret) {
   const char *tokenUrl =
     "https://auth.opensky-network.org/auth/realms/opensky-network"
@@ -75,13 +78,15 @@ static bool fc_fetch_token(const char *clientId, const char *clientSecret) {
     payload += clientSecret;
     int code = https.POST(payload);
     Serial.printf("[OpenSky] Token HTTP %d in %lums\n", code, millis() - t0);
-    if (code != HTTP_CODE_OK) { https.end(); return false; }
+    if (code != HTTP_CODE_OK) { https.end(); s_token_client->stop(); return false; }
     if (deserializeJson(doc, https.getStream())) {
       Serial.println("[OpenSky] Token parse failed");
       https.end();
+      s_token_client->stop();
       return false;
     }
     https.end();
+    s_token_client->stop();
   }
 
   const char *token = doc["access_token"] | "";
@@ -99,6 +104,288 @@ static bool fc_fetch_token(const char *clientId, const char *clientSecret) {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Streaming JSON parser for /api/states/all
+//
+// ArduinoJson's array filter uses filter[0] as a uniform template for every
+// element — it cannot filter specific indices within a nested array.  So with
+// the old approach all 17 fields were stored per aircraft, including the
+// "sensors" nested array (15-20 ints in dense urban coverage) which alone
+// blew the heap.  This streaming parser reads exactly the 12 fields we need
+// and skips everything else, using near-zero heap.
+// ---------------------------------------------------------------------------
+
+struct StreamReader {
+  Stream&       s;
+  int           lookahead;      // -2=empty, -1=EOF/timeout, >=0=char
+  unsigned long deadline_ms;
+
+  StreamReader(Stream& stream, uint32_t timeout_ms)
+    : s(stream), lookahead(-2), deadline_ms(millis() + timeout_ms) {}
+
+  int read() {
+    if (lookahead != -2) { int c = lookahead; lookahead = -2; return c; }
+    while (!s.available()) {
+      if (millis() > deadline_ms) return -1;
+      delay(1);
+    }
+    return s.read();
+  }
+
+  int peek() {
+    if (lookahead == -2) lookahead = read();
+    return lookahead;
+  }
+
+  void unread(int c) { lookahead = c; }
+};
+
+static void sr_skipWS(StreamReader &r) {
+  int c;
+  while ((c = r.peek()) == ' ' || c == '\t' || c == '\n' || c == '\r')
+    r.read();
+}
+
+// Read JSON string after opening quote was consumed; returns false on error.
+static bool sr_readStr(StreamReader &r, char *buf, int max) {
+  int i = 0, c;
+  while ((c = r.read()) >= 0 && c != '"') {
+    if (c == '\\') { c = r.read(); if (c < 0) return false; }
+    if (i < max - 1) buf[i++] = (char)c;
+  }
+  buf[i] = '\0';
+  return c == '"';
+}
+
+// Read a scalar token (number / bool / null) into buf until a JSON delimiter.
+// The terminating delimiter is put back via unread().
+static bool sr_readToken(StreamReader &r, char *buf, int max) {
+  sr_skipWS(r);
+  int i = 0, c;
+  while ((c = r.read()) >= 0) {
+    if (c == ',' || c == ']' || c == '}' || c == ' ' ||
+        c == '\t' || c == '\n' || c == '\r') {
+      r.unread(c);
+      break;
+    }
+    if (i < max - 1) buf[i++] = (char)c;
+  }
+  buf[i] = '\0';
+  return i > 0;
+}
+
+// Skip any JSON value (scalar, string, array, or object).
+static bool sr_skipValue(StreamReader &r) {
+  sr_skipWS(r);
+  int c = r.read();
+  if (c < 0) return false;
+  if (c == '"') {
+    while ((c = r.read()) >= 0 && c != '"')
+      if (c == '\\') r.read();
+    return c == '"';
+  }
+  if (c == '[' || c == '{') {
+    int depth = 1;
+    bool inStr = false;
+    while ((c = r.read()) >= 0) {
+      if (inStr) {
+        if (c == '\\') r.read();
+        else if (c == '"') inStr = false;
+      } else {
+        if      (c == '"')   inStr = true;
+        else if (c == '[' || c == '{') depth++;
+        else if (c == ']' || c == '}') { if (--depth == 0) return true; }
+      }
+    }
+    return false;
+  }
+  // Scalar: consume until delimiter.
+  while ((c = r.peek()) >= 0 && c != ',' && c != ']' && c != '}' &&
+         c != ' ' && c != '\t' && c != '\n' && c != '\r')
+    r.read();
+  return true;
+}
+
+// Expect a specific character (after skipping whitespace); return false if mismatch.
+static bool sr_expect(StreamReader &r, char expected) {
+  sr_skipWS(r);
+  return r.read() == expected;
+}
+
+// Parse one aircraft state array: [...] at current stream position.
+// Fields: 0=icao24 1=callsign 2=country 3=t_pos 4=t_contact
+//         5=lon 6=lat 7=baro_alt 8=on_ground 9=velocity 10=track 11=vert_rate
+//         12=sensors(array) 13=geo_alt 14=squawk 15=spi 16=pos_src
+// Returns false only on stream/parse error (not on filtered-out aircraft).
+static bool parseOneState(StreamReader &r, float userLat, float userLon, float radiusKm) {
+  if (!sr_expect(r, '[')) return false;
+
+  char tmp[32];
+  FlightData f = {};
+  bool hasPos = true;
+
+  // 0: icao24
+  sr_skipWS(r);
+  if (r.peek() == '"') { r.read(); sr_readStr(r, f.icao, sizeof(f.icao)); }
+  else { sr_skipValue(r); hasPos = false; }
+
+  // 1: callsign
+  if (!sr_expect(r, ',')) return false;
+  sr_skipWS(r);
+  if (r.peek() == '"') {
+    r.read();
+    char cs[12] = {};
+    sr_readStr(r, cs, sizeof(cs));
+    int len = strlen(cs);
+    while (len > 0 && cs[len - 1] == ' ') len--;
+    cs[len] = '\0';
+    strncpy(f.callsign, cs[0] ? cs : f.icao, sizeof(f.callsign) - 1);
+  } else {
+    sr_skipValue(r);
+    strncpy(f.callsign, f.icao, sizeof(f.callsign) - 1);
+  }
+
+  // 2: origin_country
+  if (!sr_expect(r, ',')) return false;
+  sr_skipWS(r);
+  if (r.peek() == '"') { r.read(); sr_readStr(r, f.country, sizeof(f.country)); }
+  else sr_skipValue(r);
+
+  // 3,4: time_position, last_contact (skip)
+  for (int i = 0; i < 2; i++) {
+    if (!sr_expect(r, ',')) return false;
+    sr_skipValue(r);
+  }
+
+  // 5: longitude
+  if (!sr_expect(r, ',')) return false;
+  sr_skipWS(r);
+  sr_readToken(r, tmp, sizeof(tmp));
+  if (strcmp(tmp, "null") == 0) hasPos = false;
+  else f.lon = atof(tmp);
+
+  // 6: latitude
+  if (!sr_expect(r, ',')) return false;
+  sr_skipWS(r);
+  sr_readToken(r, tmp, sizeof(tmp));
+  if (strcmp(tmp, "null") == 0) hasPos = false;
+  else f.lat = atof(tmp);
+
+  // 7: baro_altitude
+  if (!sr_expect(r, ',')) return false;
+  sr_skipWS(r);
+  sr_readToken(r, tmp, sizeof(tmp));
+  f.alt_m = (strcmp(tmp, "null") == 0) ? NAN : atof(tmp);
+
+  // 8: on_ground
+  if (!sr_expect(r, ',')) return false;
+  sr_skipWS(r);
+  sr_readToken(r, tmp, sizeof(tmp));
+  f.on_ground = (strcmp(tmp, "true") == 0);
+
+  // 9: velocity
+  if (!sr_expect(r, ',')) return false;
+  sr_skipWS(r);
+  sr_readToken(r, tmp, sizeof(tmp));
+  f.vel_ms = (strcmp(tmp, "null") == 0) ? 0.0f : atof(tmp);
+
+  // 10: true_track
+  if (!sr_expect(r, ',')) return false;
+  sr_skipWS(r);
+  sr_readToken(r, tmp, sizeof(tmp));
+  f.track = (strcmp(tmp, "null") == 0) ? 0.0f : atof(tmp);
+
+  // 11: vertical_rate
+  if (!sr_expect(r, ',')) return false;
+  sr_skipWS(r);
+  sr_readToken(r, tmp, sizeof(tmp));
+  f.vert_ms = (strcmp(tmp, "null") == 0) ? NAN : atof(tmp);
+
+  // Skip remaining fields (12=sensors array, 13=geo_alt, 14=squawk, 15=spi, 16=pos_src)
+  // Track depth so the sensors nested array is consumed correctly.
+  {
+    int depth = 1;   // we are inside the state array '[' we opened above
+    bool inStr = false;
+    int c;
+    while ((c = r.read()) >= 0 && depth > 0) {
+      if (inStr) {
+        if (c == '\\') r.read();
+        else if (c == '"') inStr = false;
+      } else {
+        if      (c == '"')  inStr = true;
+        else if (c == '[')  depth++;
+        else if (c == ']') { if (--depth == 0) break; }
+      }
+    }
+  }
+
+  // Count total aircraft the API returned (all with any position data).
+  if (hasPos) fc_total_in_bbox++;
+
+  if (!hasPos) return true;
+
+  float dist = fc_haversine(userLat, userLon, f.lat, f.lon);
+  if (dist <= radiusKm) {
+    f.dist_km      = dist;
+    f.bearing      = fc_bearing_calc(userLat, userLon, f.lat, f.lon);
+    f.ac_type[0]   = '\0';
+    f.ac_maker[0]  = '\0';
+    f.type_fetched = false;
+    fc_insert_sorted(f);
+  }
+  return true;
+}
+
+// Navigate stream to the "states" array and parse every element.
+static bool parseOpenSkyStream(Stream &s, float userLat, float userLon, float radiusKm) {
+  StreamReader r(s, 25000);
+
+  // Consume the opening '{' of the top-level JSON object.
+  if (!sr_expect(r, '{')) return false;
+
+  // Find the "states" key in the top-level object.
+  while (true) {
+    if (!sr_expect(r, '"')) return false;   // find next key's opening quote
+    char key[16];
+    sr_readStr(r, key, sizeof(key));
+    if (!sr_expect(r, ':')) return false;
+    if (strcmp(key, "states") == 0) break;
+    sr_skipValue(r);               // skip value of irrelevant key
+    sr_skipWS(r);
+    int c = r.peek();
+    if (c == ',') r.read();
+    else if (c == '}' || c < 0) return false;  // end of object, no "states"
+  }
+
+  sr_skipWS(r);
+  if (r.peek() != '[') {
+    // "states": null — no aircraft
+    return true;
+  }
+  r.read();  // consume '['
+
+  sr_skipWS(r);
+  if (r.peek() == ']') { r.read(); return true; }  // empty array
+
+  while (true) {
+    sr_skipWS(r);
+    int c = r.peek();
+    if (c < 0)  return false;   // timeout
+    if (c == ']') { r.read(); break; }  // end of states array
+
+    if (!parseOneState(r, userLat, userLon, radiusKm)) return false;
+
+    sr_skipWS(r);
+    c = r.peek();
+    if (c == ',') r.read();
+    else if (c != ']') return false;
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Public entry point
+// ---------------------------------------------------------------------------
 bool openSkyFetch(float userLat, float userLon, float radiusKm,
                   const char *clientId, const char *clientSecret) {
   float degLat = radiusKm / 111.0f;
@@ -118,97 +405,34 @@ bool openSkyFetch(float userLat, float userLon, float radiusKm,
     hasAuth = fc_fetch_token(clientId, clientSecret);
 
   if (!s_states_client) { s_states_client = new WiFiClientSecure; s_states_client->setInsecure(); }
-  Serial.printf("[Heap] free=%u min=%u\n", ESP.getFreeHeap(), ESP.getMinFreeHeap());
+  Serial.printf("[Heap] pre-fetch free=%u min=%u\n", ESP.getFreeHeap(), ESP.getMinFreeHeap());
 
   fc_flight_count  = 0;
   fc_total_in_bbox = 0;
 
+  bool ok = false;
   {
     HTTPClient https;
     https.begin(*s_states_client, url);
     https.setTimeout(20000);
-    https.useHTTP10(true);  // avoids chunked transfer encoding so getStream() is plain JSON
+    https.useHTTP10(true);
     https.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     if (hasAuth) https.addHeader("Authorization", String("Bearer ") + fc_access_token);
     int code = https.GET();
     Serial.printf("[OpenSky] HTTP %d in %lums\n", code, millis() - t0);
-    if (code != HTTP_CODE_OK) { https.end(); return false; }
-
-    // Static doc: allocated once, never freed — eliminates per-poll heap churn.
-    // Filter keeps only the 10 fields we use (skips timestamps, squawk, etc.),
-    // reducing per-aircraft cost ~40% so 32KB handles 100+ aircraft.
-    static DynamicJsonDocument doc(32768);
-    doc.clear();
-
-    StaticJsonDocument<192> filter;
-    filter["states"][0][0]  = true;   // icao24
-    filter["states"][0][1]  = true;   // callsign
-    filter["states"][0][2]  = true;   // origin_country
-    filter["states"][0][5]  = true;   // longitude
-    filter["states"][0][6]  = true;   // latitude
-    filter["states"][0][7]  = true;   // baro_altitude
-    filter["states"][0][8]  = true;   // on_ground
-    filter["states"][0][9]  = true;   // velocity
-    filter["states"][0][10] = true;   // true_track
-    filter["states"][0][11] = true;   // vertical_rate
-
-    DeserializationError err = deserializeJson(doc, https.getStream(),
-                                               DeserializationOption::Filter(filter));
+    if (code == HTTP_CODE_OK) {
+      ok = parseOpenSkyStream(https.getStream(), userLat, userLon, radiusKm);
+      if (!ok) Serial.println("[OpenSky] stream parse error");
+    }
     https.end();
-
-    if (err) {
-      Serial.printf("[OpenSky] JSON parse failed: %s\n", err.c_str());
-      return false;
-    }
-
-    JsonArray states = doc["states"];
-    if (states.isNull()) {
-      Serial.println("[OpenSky] No aircraft in bounding box");
-      return true;
-    }
-
-    fc_total_in_bbox = states.size();
-
-    for (JsonArray state : states) {
-      if (state[6].isNull() || state[5].isNull()) continue;
-      float lat  = state[6].as<float>();
-      float lon  = state[5].as<float>();
-      float dist = fc_haversine(userLat, userLon, lat, lon);
-      if (dist > radiusKm) continue;
-
-      FlightData f;
-      const char *icao = state[0] | "??????";
-      strncpy(f.icao, icao, sizeof(f.icao) - 1);
-      f.icao[sizeof(f.icao) - 1] = '\0';
-
-      String cs = String(state[1] | "");
-      cs.trim();
-      if (cs.isEmpty()) cs = String(f.icao);
-      strncpy(f.callsign, cs.c_str(), sizeof(f.callsign) - 1);
-      f.callsign[sizeof(f.callsign) - 1] = '\0';
-
-      const char *ctry = state[2] | "";
-      strncpy(f.country, ctry, sizeof(f.country) - 1);
-      f.country[sizeof(f.country) - 1] = '\0';
-
-      f.lat       = lat;
-      f.lon       = lon;
-      f.alt_m     = state[7].isNull()  ? NAN  : state[7].as<float>();
-      f.on_ground = state[8]           | false;
-      f.vel_ms    = state[9].isNull()  ? 0.0f : state[9].as<float>();
-      f.track     = state[10].isNull() ? 0.0f : state[10].as<float>();
-      f.vert_ms   = state[11].isNull() ? NAN  : state[11].as<float>();
-      f.dist_km      = dist;
-      f.bearing      = fc_bearing_calc(userLat, userLon, lat, lon);
-      f.ac_type[0]   = '\0';
-      f.ac_maker[0]  = '\0';
-      f.type_fetched = false;
-
-      fc_insert_sorted(f);
-    }
+    s_states_client->stop();
   }
 
-  Serial.printf("[OpenSky] bbox=%d  circle=%d  shown=%d  total=%lums\n",
-                fc_total_in_bbox, fc_flight_count, fc_flight_count, millis() - t0);
+  if (!ok) return false;
+
+  if (fc_total_in_bbox == 0) Serial.println("[OpenSky] No aircraft in bounding box");
+  Serial.printf("[OpenSky] bbox=%d  circle=%d  total=%lums\n",
+                fc_total_in_bbox, fc_flight_count, millis() - t0);
+  Serial.printf("[Heap] post-fetch free=%u min=%u\n", ESP.getFreeHeap(), ESP.getMinFreeHeap());
   return true;
 }

@@ -37,3 +37,4 @@ void loadStats();
 void updateStats(bool fetchOk);
 void expireOldRecords();
 void startTypesFetch();
+bool statsTypesFetchBusy();
