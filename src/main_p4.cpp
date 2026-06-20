@@ -5,7 +5,8 @@
 #include <LittleFS.h>
 #include <time.h>
 #include <Arduino_GFX_Library.h>
-#include <TAMC_GT911.h>
+#include <Wire.h>
+#include "hal/gt911_touch.h"
 #include "Portal.h"
 #include "OpenSky.h"
 #include "ADSBDB.h"
@@ -27,13 +28,16 @@ Arduino_ESP32DSIPanel *dsiPanel = new Arduino_ESP32DSIPanel(
     10 /*vsync_pw*/,  23 /*vsync_bp*/,  12 /*vsync_fp*/,
     GFX_NOT_DEFINED /*prefer_speed*/, 550 /*lane_bit_rate Mbps*/);
 
-// auto_flush=false: draw calls write to the frame buffer silently;
-// gfx->flush() sends the complete frame in one shot — no partial-update flash.
-Arduino_GFX *gfx = new Arduino_DSI_Display(
+// Double-buffer setup: _display is the live framebuffer the DSI DMA reads continuously.
+// gfx is a canvas (second PSRAM buffer) we draw into freely. gfx->flush() copies the
+// finished frame to _display in one shot, eliminating sustained tearing.
+Arduino_GFX *_display = new Arduino_DSI_Display(
     LCD_W, LCD_H, dsiPanel,
     0 /*rotation*/, false /*auto_flush*/,
     LCD_RST,
     jd9165_init_operations, sizeof(jd9165_init_operations) / sizeof(jd9165_init_operations[0]));
+
+Arduino_Canvas *gfx = new Arduino_Canvas(LCD_W, LCD_H, _display);
 
 // ---------------------------------------------------------------------------
 // Touch — GT911 capacitive, I2C on GPIO7/8
@@ -51,7 +55,7 @@ Arduino_GFX *gfx = new Arduino_DSI_Display(
 // ESP32-C6 WiFi coprocessor reset pin
 #define WIFI_C6_RST 54
 
-TAMC_GT911 ts(TP_SDA, TP_SCL, TP_INT, TP_RST, LCD_W, LCD_H);
+gt911_touch ts(TP_SDA, TP_SCL, TP_RST, TP_INT);
 static unsigned long lastTouchTime = 0;
 
 // ---------------------------------------------------------------------------
@@ -473,64 +477,61 @@ static void drawStats() {
 
   gfx->drawFastHLine(0, CONTENT_Y + 256, LCD_W, COL_GRID);
 
-  // Records section — two columns, each LCD_W/2 wide.
-  // Column layout (textSize=2 → 12px/char wide, 16px tall):
-  //   label(80px) | cs(120px) | type(100px) | value(right-aligned) | hhmm(60px)
-  // All offsets kept within 496px so right column (x=512) ends by x=1008.
-  auto printRecord = [&](int x, int y, const char *label, const StatRecord &r, const char *value) {
+  // Records — single left column matching CYD labels.
+  // textSize=2 → 12px/char; "Closest:" = 8 chars = 96px, so cs starts at 120.
+  auto printRecord = [&](int y, const char *label, const StatRecord &r, const char *value) {
     gfx->setTextSize(2);
     gfx->setTextColor(COL_DIM);
-    gfx->setCursor(x, y);
+    gfx->setCursor(8, y);
     gfx->print(label);
     if (r.cs[0]) {
       gfx->setTextColor(COL_AC_HIGH);
-      gfx->setCursor(x + 80, y);
+      gfx->setCursor(120, y);
       gfx->print(r.cs);
       if (r.ac_type[0]) {
         gfx->setTextColor(COL_DIM);
-        gfx->setCursor(x + 200, y);
+        gfx->setCursor(280, y);
         gfx->print(r.ac_type);
       }
       gfx->setTextColor(COL_TITLE);
       int vw = (int)strlen(value) * 12;
-      gfx->setCursor(x + 420 - vw, y);
+      gfx->setCursor(700 - vw, y);
       gfx->print(value);
       if (r.hhmm[0]) {
         gfx->setTextColor(COL_DIM);
-        gfx->setCursor(x + 432, y);
+        gfx->setCursor(712, y);
         gfx->print(r.hhmm);
       }
     } else {
       gfx->setTextColor(COL_DIM);
-      gfx->setCursor(x + 80, y);
+      gfx->setCursor(120, y);
       gfx->print("--");
     }
   };
 
   int ry = CONTENT_Y + 270;
-  int col2x = LCD_W / 2;
 
   if (stats_closest.cs[0]) {
     float d = fc_use_miles ? stats_closest_dist * 0.621371f : stats_closest_dist;
     snprintf(buf, sizeof(buf), "%.1f%s %s", d, fc_use_miles ? "mi" : "km", fc_compass(stats_closest.bearing));
   }
-  printRecord(8, ry,       "Close:",  stats_closest, buf);
+  printRecord(ry,       "Closest:", stats_closest, buf);
 
   if (stats_highest.cs[0])
     snprintf(buf, sizeof(buf), "%dft %s", (int)mToFt(stats_highest_alt), fc_compass(stats_highest.bearing));
-  printRecord(8, ry + 36,  "High:",   stats_highest, buf);
+  printRecord(ry + 36,  "Highest:", stats_highest, buf);
 
   if (stats_fastest.cs[0])
     snprintf(buf, sizeof(buf), "%dkts %s", (int)msToKts(stats_fastest_spd), fc_compass(stats_fastest.bearing));
-  printRecord(8, ry + 72,  "Fast:",   stats_fastest, buf);
+  printRecord(ry + 72,  "Fastest:", stats_fastest, buf);
 
   if (stats_climb.cs[0])
     snprintf(buf, sizeof(buf), "%dfpm %s", (int)msToFpm(stats_climb_rate), fc_compass(stats_climb.bearing));
-  printRecord(col2x, ry,  "Climb:",  stats_climb, buf);
+  printRecord(ry + 108, "Climb:",   stats_climb, buf);
 
   if (stats_desc.cs[0])
     snprintf(buf, sizeof(buf), "%dfpm %s", (int)msToFpm(-stats_desc_rate), fc_compass(stats_desc.bearing));
-  printRecord(col2x, ry + 36, "Desc:", stats_desc, buf);
+  printRecord(ry + 144, "Descent:", stats_desc, buf);
 }
 
 // ---------------------------------------------------------------------------
@@ -763,6 +764,7 @@ static void handleTouch(int tx, int ty) {
     fc_detail_idx = -1;
     drawList();
     drawFooter();
+    gfx->flush();
     return;
   }
 
@@ -774,8 +776,11 @@ static void handleTouch(int tx, int ty) {
       drawFooter();
       if (fc_detail_idx >= 0) {
         drawDetail(fc_detail_idx);
+        gfx->flush();
         bool updated = adsbdbFetchType(fc_flights[fc_detail_idx]);
-        if (updated) drawDetail(fc_detail_idx);
+        if (updated) { drawDetail(fc_detail_idx); gfx->flush(); }
+      } else {
+        gfx->flush();
       }
     }
   }
@@ -806,15 +811,16 @@ void setup() {
 
   fcLoadSettings();
 
-  // Display
-  if (!gfx->begin()) Serial.println("gfx->begin() failed!");
-  gfx->invertDisplay(fc_invert_display);
+  // Display — canvas->begin() calls _display->begin() internally; don't call it twice.
+  if (!gfx->begin()) Serial.println("canvas->begin() failed!");
+  _display->invertDisplay(fc_invert_display);
   gfx->fillScreen(RGB565_BLACK);
   pinMode(LCD_BL, OUTPUT);
   digitalWrite(LCD_BL, HIGH);
 
-  // Touch — explicit Wire init required on P4 before TAMC_GT911::begin()
-  Wire.begin(TP_SDA, TP_SCL);
+  // Touch — Wire1.begin() registers I2C bus 1 via esp_driver_i2c internally;
+  // gt911_touch::begin_safe() retrieves it via i2c_master_get_bus_handle(1,...).
+  Wire1.begin(TP_SDA, TP_SCL);
   ts.begin();
 
   // BOOT button
@@ -938,23 +944,22 @@ void loop() {
     fc_fetching   = true;
     fc_fetch_done = false;
     drawHeader();
-    gfx->flush();
     // P4 is RISC-V: TLS stack frames are larger than Xtensa. loop() runs on
     // core 0 under pioarduino, so pin the task to core 1 to avoid sharing.
     xTaskCreatePinnedToCore(fetchTaskFn, "fetch", 16384, NULL, 1, NULL, 1);
   }
 
   // Touch
-  ts.read();
-  if (ts.isTouched) {
-    unsigned long now = millis();
-    if (now - lastTouchTime > TOUCH_DEBOUNCE) {
-      lastTouchTime = now;
-      int tx = ts.points[0].x;
-      int ty = ts.points[0].y;
-      tx = constrain(tx, 0, LCD_W - 1);
-      ty = constrain(ty, 0, LCD_H - 1);
-      handleTouch(tx, ty);
+  {
+    uint16_t tx, ty;
+    if (ts.getTouch(&tx, &ty)) {
+      unsigned long now = millis();
+      if (now - lastTouchTime > TOUCH_DEBOUNCE) {
+        lastTouchTime = now;
+        int itx = constrain((int)tx, 0, LCD_W - 1);
+        int ity = constrain((int)ty, 0, LCD_H - 1);
+        handleTouch(itx, ity);
+      }
     }
   }
 
