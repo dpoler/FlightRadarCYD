@@ -127,7 +127,8 @@ static int  conf_pending_radius = 0;
 static bool conf_pending_hide   = false;
 static bool conf_pending_miles  = false;
 static bool conf_dirty          = false;
-static bool ota_check_pending   = false;  // deferred until no TLS session is running
+static bool          ota_check_pending = false;   // deferred until no TLS session is running
+static unsigned long ota_done_millis   = 0;       // millis() when OTA_DONE was first seen
 static unsigned long fc_last_fetch   = 0;  // last successful fetch (drives "upd" display)
 static unsigned long fc_last_attempt = 0;  // last fetch attempt, success or failure (throttles retries)
 static bool fc_fetch_ok       = false;
@@ -801,6 +802,75 @@ static void drawConfBtn(int x, int y, int w, int h,
   gfx->print(label);
 }
 
+// Repaints only the firmware row — called during OTA progress to avoid full-overlay flicker.
+static void drawConfFwRow() {
+  gfx->fillRect(CONF_IX, CONF_FW_ROW_Y, CONF_IW, CONF_FW_BTN_H, 0x0841);
+  gfx->setTextSize(1);
+  gfx->setTextColor(RGB565_WHITE);
+  gfx->setCursor(CONF_IX, CONF_FW_ROW_Y + 6);
+  gfx->print("Firmware:");
+
+  // Status text
+  char verBuf[28] = "";
+  uint16_t verColor = COL_DIM;
+  switch (ota_status) {
+    case OTA_IDLE:
+      strncpy(verBuf, FIRMWARE_VERSION_STR, sizeof(verBuf) - 1);
+      break;
+    case OTA_CHECKING:
+      strncpy(verBuf, "Checking...", sizeof(verBuf) - 1);
+      break;
+    case OTA_UP_TO_DATE:
+      strncpy(verBuf, "Up to date", sizeof(verBuf) - 1);
+      verColor = COL_GREEN;
+      break;
+    case OTA_AVAILABLE:
+      snprintf(verBuf, sizeof(verBuf), "%s available", ota_latest_tag);
+      verColor = COL_GREEN;
+      break;
+    case OTA_DOWNLOADING:
+      snprintf(verBuf, sizeof(verBuf), "Updating %d%%", (int)ota_progress);
+      verColor = COL_ACCENT;
+      break;
+    case OTA_DONE: {
+      int secs = ota_done_millis ? max(0, 5 - (int)((millis() - ota_done_millis) / 1000)) : 5;
+      snprintf(verBuf, sizeof(verBuf), "Done! Restart in %d...", secs);
+      verColor = COL_GREEN;
+      break;
+    }
+    case OTA_ERROR:
+      strncpy(verBuf, "Failed", sizeof(verBuf) - 1);
+      verColor = RGB565_RED;
+      break;
+  }
+  gfx->setTextColor(verColor);
+  gfx->setCursor(CONF_IX + 58, CONF_FW_ROW_Y + 6);
+  gfx->print(verBuf);
+
+  // Button or progress bar on the right
+  if (ota_status == OTA_DOWNLOADING) {
+    gfx->drawRect(CONF_FW_BTN_X, CONF_FW_ROW_Y, CONF_FW_BTN_W, CONF_FW_BTN_H, 0x39E7);
+    int filled = (int)((long)CONF_FW_BTN_W * ota_progress / 100);
+    if (filled > 2) gfx->fillRect(CONF_FW_BTN_X + 1, CONF_FW_ROW_Y + 1,
+                                   filled - 2, CONF_FW_BTN_H - 2, COL_TITLE);
+  } else if (ota_status != OTA_DONE) {
+    const char *btnLbl  = (ota_status == OTA_AVAILABLE) ? "UPDATE" :
+                          (ota_status == OTA_ERROR)     ? "RETRY"  : "CHECK";
+    bool btnActive = (ota_status == OTA_AVAILABLE);
+    bool btnDim    = (ota_status == OTA_CHECKING);
+    uint16_t border = btnActive ? COL_TITLE : (uint16_t)(btnDim ? 0x2104 : 0x39E7);
+    uint16_t text   = btnActive ? COL_TITLE : (uint16_t)(btnDim ? COL_DIM : 0xFFFF);
+    uint16_t fill   = btnActive ? (uint16_t)0x0841 : (uint16_t)0x0000;
+    gfx->fillRect(CONF_FW_BTN_X, CONF_FW_ROW_Y, CONF_FW_BTN_W, CONF_FW_BTN_H, fill);
+    gfx->drawRect(CONF_FW_BTN_X, CONF_FW_ROW_Y, CONF_FW_BTN_W, CONF_FW_BTN_H, border);
+    int tw = strlen(btnLbl) * 6;
+    gfx->setTextColor(text);
+    gfx->setCursor(CONF_FW_BTN_X + (CONF_FW_BTN_W - tw) / 2,
+                   CONF_FW_ROW_Y + (CONF_FW_BTN_H - 8) / 2);
+    gfx->print(btnLbl);
+  }
+}
+
 static void drawConf() {
   // Overlay box
   gfx->fillRect(CONF_X, CONF_Y, CONF_W, CONF_H, 0x0841);
@@ -859,58 +929,7 @@ static void drawConf() {
               conf_pending_hide ? "ON" : "OFF", conf_pending_hide);
 
   // ── Row 4: Firmware / OTA ──
-  gfx->fillRect(CONF_IX, CONF_FW_ROW_Y, CONF_IW, CONF_FW_BTN_H, 0x0841);
-  gfx->setTextColor(RGB565_WHITE);
-  gfx->setCursor(CONF_IX, CONF_FW_ROW_Y + 6);
-  gfx->print("Firmware:");
-  {
-    uint16_t verColor = COL_DIM;
-    const char *verText = FIRMWARE_VERSION_STR;
-    char verBuf[24];
-    if (ota_status == OTA_UP_TO_DATE) {
-      verColor = COL_GREEN;
-    } else if (ota_status == OTA_AVAILABLE) {
-      snprintf(verBuf, sizeof(verBuf), "%s", ota_latest_tag);
-      verText  = verBuf;
-      verColor = COL_GREEN;
-    } else if (ota_status == OTA_CHECKING) {
-      verText  = "Checking...";
-    } else if (ota_status == OTA_DOWNLOADING) {
-      snprintf(verBuf, sizeof(verBuf), "Loading %d%%", (int)ota_progress);
-      verText  = verBuf;
-      verColor = COL_ACCENT;
-    } else if (ota_status == OTA_DONE) {
-      verText  = "Done!";
-      verColor = COL_GREEN;
-    } else if (ota_status == OTA_ERROR) {
-      verText  = "Error";
-      verColor = RGB565_RED;
-    }
-    gfx->setTextColor(verColor);
-    gfx->setCursor(CONF_IX + 58, CONF_FW_ROW_Y + 6);
-    gfx->print(verText);
-  }
-  // Button / progress on the right
-  if (ota_status == OTA_DOWNLOADING) {
-    gfx->drawRect(CONF_FW_BTN_X, CONF_FW_ROW_Y, CONF_FW_BTN_W, CONF_FW_BTN_H, 0x39E7);
-    int filled = (int)((long)CONF_FW_BTN_W * ota_progress / 100);
-    if (filled > 2) gfx->fillRect(CONF_FW_BTN_X + 1, CONF_FW_ROW_Y + 1,
-                                   filled - 2, CONF_FW_BTN_H - 2, COL_TITLE);
-  } else if (ota_status != OTA_DONE) {
-    const char *btnLbl   = (ota_status == OTA_AVAILABLE) ? "UPDATE" : "CHECK";
-    bool        btnActive = (ota_status == OTA_AVAILABLE);
-    bool        btnDim    = (ota_status == OTA_CHECKING);
-    uint16_t border = btnActive ? COL_TITLE   : (uint16_t)(btnDim ? 0x2104 : 0x39E7);
-    uint16_t text   = btnActive ? COL_TITLE   : (uint16_t)(btnDim ? COL_DIM : 0xFFFF);
-    uint16_t fill   = btnActive ? (uint16_t)0x0841 : (uint16_t)0x0000;
-    gfx->fillRect(CONF_FW_BTN_X, CONF_FW_ROW_Y, CONF_FW_BTN_W, CONF_FW_BTN_H, fill);
-    gfx->drawRect(CONF_FW_BTN_X, CONF_FW_ROW_Y, CONF_FW_BTN_W, CONF_FW_BTN_H, border);
-    int tw = strlen(btnLbl) * 6;
-    gfx->setTextColor(text);
-    gfx->setCursor(CONF_FW_BTN_X + (CONF_FW_BTN_W - tw) / 2,
-                   CONF_FW_ROW_Y + (CONF_FW_BTN_H - 8) / 2);
-    gfx->print(btnLbl);
-  }
+  drawConfFwRow();
 
   // ── Bottom divider + action buttons ──
   gfx->drawFastHLine(CONF_X, CONF_ACT_BTN_Y - 4, CONF_W, COL_TITLE);
@@ -1090,8 +1109,7 @@ static void handleTouch(int tx, int ty) {
       if (ota_status == OTA_AVAILABLE) {
         otaUpdate();
       } else if (ota_status != OTA_CHECKING && ota_status != OTA_DOWNLOADING) {
-        // Defer if a TLS fetch is already running; start immediately otherwise.
-        // Concurrent TLS sessions exhaust the mbedTLS heap.
+        ota_done_millis = 0;
         if (!fc_fetching && !statsTypesFetchBusy()) {
           otaCheck();
         } else {
@@ -1263,19 +1281,31 @@ void loop() {
     }
   }
 
-  // OTA: restart when update has been flashed
+  // OTA: 5-second countdown then restart
   if (ota_status == OTA_DONE) {
-    showStatus("Update installed! Restarting...");
-    delay(2000);
-    ESP.restart();
+    if (ota_done_millis == 0) ota_done_millis = millis();
+    static unsigned long lastOtaRedraw = 0;
+    if (millis() - lastOtaRedraw > 500) {
+      lastOtaRedraw = millis();
+      if (conf_open) {
+        drawConfFwRow();
+      } else {
+        // Full-screen countdown if overlay was closed
+        int secs = max(0, 5 - (int)((millis() - ota_done_millis) / 1000));
+        char buf[32];
+        snprintf(buf, sizeof(buf), "Restarting in %d...", secs);
+        showStatus(buf);
+      }
+    }
+    if (millis() - ota_done_millis >= 5000) ESP.restart();
   }
 
-  // Redraw the settings overlay while OTA is in progress so progress shows
+  // Redraw only the firmware row while OTA check/download is in progress
   if (conf_open && (ota_status == OTA_CHECKING || ota_status == OTA_DOWNLOADING)) {
     static unsigned long lastOtaRedraw = 0;
     if (millis() - lastOtaRedraw > 400) {
       lastOtaRedraw = millis();
-      drawConf();
+      drawConfFwRow();
     }
   }
 
