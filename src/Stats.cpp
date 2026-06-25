@@ -230,7 +230,10 @@ void loadStats() {
     time_t now_ts = time(nullptr);
     int64_t elapsed = (int64_t)now_ts - (int64_t)stats_save_ts;
 
-    if (stats_save_ts <= 0 || elapsed < 0 || elapsed >= 86400) {
+    if (now_ts <= 0) {
+      // NTP not synced yet — preserve chart, defer hour tracking
+      stats_current_hour = -1;
+    } else if (stats_save_ts <= 0 || elapsed >= 86400) {
       memset(stats_hourly_unique, 0, sizeof(stats_hourly_unique));
       stats_current_hour = -1;
     } else {
