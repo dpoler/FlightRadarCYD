@@ -18,6 +18,7 @@
 #include "ADSBDB.h"
 #include "Airlines.h"
 #include "Stats.h"
+#include "OTA.h"
 
 // ---------------------------------------------------------------------------
 // Display — CYD ILI9341 320×240 landscape
@@ -59,10 +60,10 @@ static unsigned long lastTouchTime = 0;
 #define CONF_X         10
 #define CONF_Y         28
 #define CONF_W         300
-#define CONF_H         184
+#define CONF_H         210
 #define CONF_IX        (CONF_X + 8)           // inner left edge (8px padding)
 #define CONF_IW        (CONF_W - 16)          // inner width = 284px
-// Three content rows (Scan Radius / Distance Units / Hide Ground), tightly spaced
+// Four content rows (Scan Radius / Distance Units / Hide Ground / Firmware), tightly spaced
 #define CONF_ROW_BTN_H 22
 // Row 1 — Scan Radius: 3 × 92px preset buttons
 #define CONF_RAD_BTN_W 92
@@ -79,10 +80,15 @@ static unsigned long lastTouchTime = 0;
 #define CONF_HID_BTN_H CONF_ROW_BTN_H
 #define CONF_HID_BTN_X (CONF_IX + (CONF_IW - CONF_HID_BTN_W) / 2)
 #define CONF_HID_BTN_Y (CONF_UNI_BTN_Y + CONF_UNI_BTN_H + 19)  // y=145
+// Row 4 — Firmware OTA: label + action button on the right
+#define CONF_FW_ROW_Y  (CONF_HID_BTN_Y + CONF_HID_BTN_H + 7)   // y=174
+#define CONF_FW_BTN_H  20
+#define CONF_FW_BTN_W  76
+#define CONF_FW_BTN_X  (CONF_IX + CONF_IW - CONF_FW_BTN_W)
 // Save/Cancel buttons along the bottom
 #define CONF_ACT_BTN_W ((CONF_IW - 4) / 2)   // 140px each, 4px gap
 #define CONF_ACT_BTN_H 22
-#define CONF_ACT_BTN_Y (CONF_Y + CONF_H - CONF_ACT_BTN_H - 6)  // y=184
+#define CONF_ACT_BTN_Y (CONF_Y + CONF_H - CONF_ACT_BTN_H - 6)  // y=210
 #define CONF_CANCEL_X  CONF_IX
 #define CONF_SAVE_X    (CONF_IX + CONF_ACT_BTN_W + 4)
 
@@ -121,6 +127,7 @@ static int  conf_pending_radius = 0;
 static bool conf_pending_hide   = false;
 static bool conf_pending_miles  = false;
 static bool conf_dirty          = false;
+static bool ota_check_pending   = false;  // deferred until no TLS session is running
 static unsigned long fc_last_fetch   = 0;  // last successful fetch (drives "upd" display)
 static unsigned long fc_last_attempt = 0;  // last fetch attempt, success or failure (throttles retries)
 static bool fc_fetch_ok       = false;
@@ -851,6 +858,60 @@ static void drawConf() {
   drawConfBtn(CONF_HID_BTN_X, CONF_HID_BTN_Y, CONF_HID_BTN_W, CONF_HID_BTN_H,
               conf_pending_hide ? "ON" : "OFF", conf_pending_hide);
 
+  // ── Row 4: Firmware / OTA ──
+  gfx->fillRect(CONF_IX, CONF_FW_ROW_Y, CONF_IW, CONF_FW_BTN_H, 0x0841);
+  gfx->setTextColor(RGB565_WHITE);
+  gfx->setCursor(CONF_IX, CONF_FW_ROW_Y + 6);
+  gfx->print("Firmware:");
+  {
+    uint16_t verColor = COL_DIM;
+    const char *verText = FIRMWARE_VERSION_STR;
+    char verBuf[24];
+    if (ota_status == OTA_UP_TO_DATE) {
+      verColor = COL_GREEN;
+    } else if (ota_status == OTA_AVAILABLE) {
+      snprintf(verBuf, sizeof(verBuf), "%s", ota_latest_tag);
+      verText  = verBuf;
+      verColor = COL_GREEN;
+    } else if (ota_status == OTA_CHECKING) {
+      verText  = "Checking...";
+    } else if (ota_status == OTA_DOWNLOADING) {
+      snprintf(verBuf, sizeof(verBuf), "Loading %d%%", (int)ota_progress);
+      verText  = verBuf;
+      verColor = COL_ACCENT;
+    } else if (ota_status == OTA_DONE) {
+      verText  = "Done!";
+      verColor = COL_GREEN;
+    } else if (ota_status == OTA_ERROR) {
+      verText  = "Error";
+      verColor = RGB565_RED;
+    }
+    gfx->setTextColor(verColor);
+    gfx->setCursor(CONF_IX + 58, CONF_FW_ROW_Y + 6);
+    gfx->print(verText);
+  }
+  // Button / progress on the right
+  if (ota_status == OTA_DOWNLOADING) {
+    gfx->drawRect(CONF_FW_BTN_X, CONF_FW_ROW_Y, CONF_FW_BTN_W, CONF_FW_BTN_H, 0x39E7);
+    int filled = (int)((long)CONF_FW_BTN_W * ota_progress / 100);
+    if (filled > 2) gfx->fillRect(CONF_FW_BTN_X + 1, CONF_FW_ROW_Y + 1,
+                                   filled - 2, CONF_FW_BTN_H - 2, COL_TITLE);
+  } else if (ota_status != OTA_DONE) {
+    const char *btnLbl   = (ota_status == OTA_AVAILABLE) ? "UPDATE" : "CHECK";
+    bool        btnActive = (ota_status == OTA_AVAILABLE);
+    bool        btnDim    = (ota_status == OTA_CHECKING);
+    uint16_t border = btnActive ? COL_TITLE   : (uint16_t)(btnDim ? 0x2104 : 0x39E7);
+    uint16_t text   = btnActive ? COL_TITLE   : (uint16_t)(btnDim ? COL_DIM : 0xFFFF);
+    uint16_t fill   = btnActive ? (uint16_t)0x0841 : (uint16_t)0x0000;
+    gfx->fillRect(CONF_FW_BTN_X, CONF_FW_ROW_Y, CONF_FW_BTN_W, CONF_FW_BTN_H, fill);
+    gfx->drawRect(CONF_FW_BTN_X, CONF_FW_ROW_Y, CONF_FW_BTN_W, CONF_FW_BTN_H, border);
+    int tw = strlen(btnLbl) * 6;
+    gfx->setTextColor(text);
+    gfx->setCursor(CONF_FW_BTN_X + (CONF_FW_BTN_W - tw) / 2,
+                   CONF_FW_ROW_Y + (CONF_FW_BTN_H - 8) / 2);
+    gfx->print(btnLbl);
+  }
+
   // ── Bottom divider + action buttons ──
   gfx->drawFastHLine(CONF_X, CONF_ACT_BTN_Y - 4, CONF_W, COL_TITLE);
   drawConfBtn(CONF_CANCEL_X, CONF_ACT_BTN_Y, CONF_ACT_BTN_W, CONF_ACT_BTN_H,
@@ -1023,6 +1084,24 @@ static void handleTouch(int tx, int ty) {
       return;
     }
 
+    // OTA firmware button
+    if (tx >= CONF_FW_BTN_X && tx < CONF_FW_BTN_X + CONF_FW_BTN_W &&
+        ty >= CONF_FW_ROW_Y && ty < CONF_FW_ROW_Y + CONF_FW_BTN_H) {
+      if (ota_status == OTA_AVAILABLE) {
+        otaUpdate();
+      } else if (ota_status != OTA_CHECKING && ota_status != OTA_DOWNLOADING) {
+        // Defer if a TLS fetch is already running; start immediately otherwise.
+        // Concurrent TLS sessions exhaust the mbedTLS heap.
+        if (!fc_fetching && !statsTypesFetchBusy()) {
+          otaCheck();
+        } else {
+          ota_check_pending = true;
+        }
+      }
+      drawConf();
+      return;
+    }
+
     // Tap outside overlay = cancel
     if (tx < CONF_X || tx >= CONF_X + CONF_W ||
         ty < CONF_Y || ty >= CONF_Y + CONF_H) {
@@ -1184,6 +1263,22 @@ void loop() {
     }
   }
 
+  // OTA: restart when update has been flashed
+  if (ota_status == OTA_DONE) {
+    showStatus("Update installed! Restarting...");
+    delay(2000);
+    ESP.restart();
+  }
+
+  // Redraw the settings overlay while OTA is in progress so progress shows
+  if (conf_open && (ota_status == OTA_CHECKING || ota_status == OTA_DOWNLOADING)) {
+    static unsigned long lastOtaRedraw = 0;
+    if (millis() - lastOtaRedraw > 400) {
+      lastOtaRedraw = millis();
+      drawConf();
+    }
+  }
+
   // Post-fetch: runs on core 1 (display-safe) — must check before starting a new fetch
   if (fc_fetch_done) {
     fc_fetch_done = false;
@@ -1198,7 +1293,16 @@ void loop() {
   // Kick off background fetch when due
   unsigned long fetchInterval = (fc_client_id[0] != '\0') ? OPENSKY_INTERVAL_AUTH : OPENSKY_INTERVAL_ANON;
   // Don't start while type fetch is running: both tasks pin to core 0, concurrent TLS starves both.
-  if (!fc_fetching && !statsTypesFetchBusy() && (fc_last_attempt == 0 || (millis() - fc_last_attempt) > fetchInterval)) {
+  // Start a deferred OTA check now that the network is free
+  if (ota_check_pending && !fc_fetching && !statsTypesFetchBusy()) {
+    ota_check_pending = false;
+    otaCheck();
+    if (conf_open) drawConf();
+  }
+
+  if (!fc_fetching && !statsTypesFetchBusy() &&
+      ota_status != OTA_CHECKING && ota_status != OTA_DOWNLOADING &&
+      (fc_last_attempt == 0 || (millis() - fc_last_attempt) > fetchInterval)) {
     if (WiFi.status() != WL_CONNECTED) {
       if (fc_wifi_connected) {
         fc_wifi_connected = false;
