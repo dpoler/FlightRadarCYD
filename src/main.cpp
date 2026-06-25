@@ -2,12 +2,14 @@
 // Data: OpenSky Network (free, no key) — refreshes every 4 minutes
 // RADAR mode: mini radar showing aircraft positions relative to your location
 // LIST  mode: closest aircraft sorted by distance with detail overlay on tap
-// BOOT button: toggle RADAR ↔ LIST  |  Footer touch zones: same
+// BOOT button: short-press cycles modes, long-press (1s) opens settings overlay
+// Footer: [RADAR] [STATS] [LIST] [*] — tap * or long-press BOOT for settings
 // Setup: first boot opens FlightRadarCYD_Setup AP — enter WiFi + lat/lon + radius
 
 #include <Arduino.h>
 #include <WiFi.h>
 #include <LittleFS.h>
+#include <Preferences.h>
 #include <time.h>
 #include <Arduino_GFX_Library.h>
 #include <XPT2046_Touchscreen.h>
@@ -53,6 +55,29 @@ static unsigned long lastTouchTime = 0;
 // Scale: pixels per km
 // (computed at runtime from fc_radius_km)
 
+// Settings overlay geometry (drawn over the content area)
+#define CONF_X         10
+#define CONF_Y         28
+#define CONF_W         300
+#define CONF_H         184
+#define CONF_IX        (CONF_X + 8)           // inner left edge (8px padding)
+#define CONF_IW        (CONF_W - 16)          // inner width = 284px
+// Radius preset buttons: 3 × 92px with 4px gaps, starting at CONF_IX
+#define CONF_RAD_BTN_W 92
+#define CONF_RAD_BTN_H 22
+#define CONF_RAD_BTN_Y (CONF_Y + 43)         // y=71
+// Hide-ground toggle: 120px wide, centered
+#define CONF_HID_BTN_W 120
+#define CONF_HID_BTN_H 22
+#define CONF_HID_BTN_X (CONF_IX + (CONF_IW - CONF_HID_BTN_W) / 2)
+#define CONF_HID_BTN_Y (CONF_RAD_BTN_Y + CONF_RAD_BTN_H + 32)  // y=125
+// Save/Cancel buttons along the bottom
+#define CONF_ACT_BTN_W ((CONF_IW - 4) / 2)   // 140px each, 4px gap
+#define CONF_ACT_BTN_H 22
+#define CONF_ACT_BTN_Y (CONF_Y + CONF_H - CONF_ACT_BTN_H - 6)  // y=178
+#define CONF_CANCEL_X  CONF_IX
+#define CONF_SAVE_X    (CONF_IX + CONF_ACT_BTN_W + 4)
+
 // ---------------------------------------------------------------------------
 // Colours
 // ---------------------------------------------------------------------------
@@ -81,6 +106,12 @@ static unsigned long lastTouchTime = 0;
 
 static int  fc_mode         = MODE_RADAR;
 static int  fc_detail_idx   = -1;          // -1 = no detail overlay
+
+// Settings overlay state
+static bool conf_open           = false;
+static int  conf_pending_radius = 0;
+static bool conf_pending_hide   = false;
+static bool conf_dirty          = false;
 static unsigned long fc_last_fetch   = 0;  // last successful fetch (drives "upd" display)
 static unsigned long fc_last_attempt = 0;  // last fetch attempt, success or failure (throttles retries)
 static bool fc_fetch_ok       = false;
@@ -183,28 +214,36 @@ static void drawHeader() {
 }
 
 // ---------------------------------------------------------------------------
-// Footer  — [◉ RADAR]  |  [☰ LIST]
+// Footer  — [O RADAR] | [# STATS] | [= LIST] | [*]
+// Mode zones 95px each (0-95, 95-190, 190-285); gear gets remaining 35px (285-320).
+// Dividers at 95, 190, 285.
 // ---------------------------------------------------------------------------
 static void drawFooter() {
   int fy = 240 - FOOTER_H;
   gfx->fillRect(0, fy, 320, FOOTER_H, COL_FOOTER_BG);
   gfx->drawFastHLine(0, fy, 320, 0x2104);
-  gfx->drawFastVLine(107, fy, FOOTER_H, 0x2104);
-  gfx->drawFastVLine(214, fy, FOOTER_H, 0x2104);
+  gfx->drawFastVLine(95,  fy, FOOTER_H, 0x2104);
+  gfx->drawFastVLine(190, fy, FOOTER_H, 0x2104);
+  gfx->drawFastVLine(285, fy, FOOTER_H, 0x2104);
 
   gfx->setTextSize(1);
 
+  // Zone centres: 47, 142, 237, 302
   gfx->setTextColor(fc_mode == MODE_RADAR ? COL_TITLE : COL_DIM);
-  gfx->setCursor(26,  fy + 6);
+  gfx->setCursor(20,  fy + 6);
   gfx->print(fc_mode == MODE_RADAR ? "[O] RADAR" : " O  RADAR");
 
   gfx->setTextColor(fc_mode == MODE_STATS ? COL_TITLE : COL_DIM);
-  gfx->setCursor(133, fy + 6);
+  gfx->setCursor(115, fy + 6);
   gfx->print(fc_mode == MODE_STATS ? "[#] STATS" : " #  STATS");
 
-  gfx->setTextColor(fc_mode == MODE_LIST  ? COL_TITLE : COL_DIM);
-  gfx->setCursor(243, fy + 6);
-  gfx->print(fc_mode == MODE_LIST  ? "[=] LIST"  : " =  LIST");
+  gfx->setTextColor(fc_mode == MODE_LIST ? COL_TITLE : COL_DIM);
+  gfx->setCursor(213, fy + 6);
+  gfx->print(fc_mode == MODE_LIST ? "[=] LIST" : " =  LIST");
+
+  gfx->setTextColor(conf_open ? COL_TITLE : COL_DIM);
+  gfx->setCursor(293, fy + 6);
+  gfx->print(conf_open ? "[*]" : " * ");
 }
 
 // ---------------------------------------------------------------------------
@@ -731,6 +770,118 @@ static void drawDetail(int idx) {
 }
 
 // ---------------------------------------------------------------------------
+// Settings overlay
+// ---------------------------------------------------------------------------
+static void drawConfBtn(int x, int y, int w, int h,
+                        const char *label, bool selected) {
+  uint16_t border = selected ? COL_TITLE  : (uint16_t)0x39E7;  // cyan : mid-gray
+  uint16_t text   = selected ? COL_TITLE  : (uint16_t)0xFFFF;  // cyan : white
+  uint16_t fill   = selected ? (uint16_t)0x0841 : (uint16_t)0x0000;
+  gfx->fillRect(x, y, w, h, fill);
+  gfx->drawRect(x, y, w, h, border);
+  int tw = strlen(label) * 6;
+  gfx->setTextColor(text);
+  gfx->setCursor(x + (w - tw) / 2, y + (h - 8) / 2);
+  gfx->print(label);
+}
+
+static void drawConf() {
+  // Overlay box
+  gfx->fillRect(CONF_X, CONF_Y, CONF_W, CONF_H, 0x0841);
+  gfx->drawRect(CONF_X, CONF_Y, CONF_W, CONF_H, COL_TITLE);
+
+  // Title bar
+  int titleDivY = CONF_Y + 19;
+  gfx->fillRect(CONF_X + 1, CONF_Y + 1, CONF_W - 2, 18, 0x1082);
+  gfx->drawFastHLine(CONF_X, titleDivY, CONF_W, COL_TITLE);
+  gfx->setTextColor(COL_TITLE);
+  gfx->setTextSize(1);
+  const char *title = "* SETTINGS";
+  gfx->setCursor(CONF_X + (CONF_W - (int)strlen(title) * 6) / 2, CONF_Y + 6);
+  gfx->print(title);
+
+  // ── Scan Radius ──
+  gfx->setTextColor(RGB565_WHITE);
+  gfx->setCursor(CONF_IX, CONF_Y + 26);
+  gfx->print("Scan Radius:");
+
+  // Build preset labels and km values matching portal
+  int presetKm[3];
+  char presetLbl[3][8];
+  if (fc_use_miles) {
+    int miVals[3] = {15, 30, 60};
+    for (int i = 0; i < 3; i++) {
+      presetKm[i] = (int)(miVals[i] * 1.60934f + 0.5f);
+      snprintf(presetLbl[i], sizeof(presetLbl[i]), "%d mi", miVals[i]);
+    }
+  } else {
+    int kmVals[3] = {25, 50, 100};
+    for (int i = 0; i < 3; i++) {
+      presetKm[i] = kmVals[i];
+      snprintf(presetLbl[i], sizeof(presetLbl[i]), "%d km", kmVals[i]);
+    }
+  }
+
+  for (int i = 0; i < 3; i++) {
+    int bx = CONF_IX + i * (CONF_RAD_BTN_W + 4);
+    drawConfBtn(bx, CONF_RAD_BTN_Y, CONF_RAD_BTN_W, CONF_RAD_BTN_H,
+                presetLbl[i], conf_pending_radius == presetKm[i]);
+  }
+
+  // ── Hide aircraft on ground ──
+  gfx->setTextColor(RGB565_WHITE);
+  gfx->setCursor(CONF_IX, CONF_HID_BTN_Y - 13);
+  gfx->print("Hide aircraft on ground:");
+
+  drawConfBtn(CONF_HID_BTN_X, CONF_HID_BTN_Y, CONF_HID_BTN_W, CONF_HID_BTN_H,
+              conf_pending_hide ? "ON" : "OFF", conf_pending_hide);
+
+  // ── Unsaved indicator ──
+  int dirtyY = CONF_HID_BTN_Y + CONF_HID_BTN_H + 8;
+  if (conf_dirty) {
+    gfx->setTextColor(COL_ACCENT);
+    gfx->setCursor(CONF_IX, dirtyY);
+    gfx->print("* unsaved  \x18  Cancel discards changes");
+  }
+
+  // ── Bottom divider + action buttons ──
+  gfx->drawFastHLine(CONF_X, CONF_ACT_BTN_Y - 4, CONF_W, COL_TITLE);
+  drawConfBtn(CONF_CANCEL_X, CONF_ACT_BTN_Y, CONF_ACT_BTN_W, CONF_ACT_BTN_H,
+              "CANCEL", false);
+  drawConfBtn(CONF_SAVE_X, CONF_ACT_BTN_Y, CONF_ACT_BTN_W, CONF_ACT_BTN_H,
+              "SAVE", conf_dirty);
+}
+
+static void redraw();  // forward declaration
+
+static void confOpen() {
+  conf_pending_radius = fc_radius_km;
+  conf_pending_hide   = fc_hide_ground;
+  conf_dirty          = false;
+  conf_open           = true;
+  drawFooter();
+  drawConf();
+}
+
+static void confClose() {
+  conf_open = false;
+  redraw();   // repaint underlying mode cleanly
+}
+
+static void confSave() {
+  fc_radius_km   = conf_pending_radius;
+  fc_hide_ground = conf_pending_hide;
+  Preferences prefs;
+  prefs.begin("flightcyd", false);
+  prefs.putInt ("radius",   fc_radius_km);
+  prefs.putBool("hide_gnd", fc_hide_ground);
+  prefs.end();
+  conf_dirty      = false;
+  fc_last_attempt = 0;  // trigger immediate refresh with new settings
+  confClose();
+}
+
+// ---------------------------------------------------------------------------
 // Full redraw of current mode
 // ---------------------------------------------------------------------------
 static void redraw() {
@@ -740,6 +891,7 @@ static void redraw() {
   else                            drawList();
   drawFooter();
   if (fc_mode == MODE_LIST && fc_detail_idx >= 0) drawDetail(fc_detail_idx);
+  if (conf_open) drawConf();
 }
 
 // ---------------------------------------------------------------------------
@@ -765,11 +917,72 @@ static void fetchTaskFn(void *) {
 // ---------------------------------------------------------------------------
 static void handleTouch(int tx, int ty) {
   int footerY      = 240 - FOOTER_H;
-  int footerTouchY = footerY - 16;  // extend tap zone upward without moving the visual footer
+  int footerTouchY = footerY - 16;  // extend tap zone upward
 
-  // Footer: switch modes
+  // ── Settings overlay is open: all taps handled here ──
+  if (conf_open) {
+    // Action buttons (CANCEL / SAVE)
+    if (ty >= CONF_ACT_BTN_Y && ty < CONF_ACT_BTN_Y + CONF_ACT_BTN_H) {
+      if (tx >= CONF_CANCEL_X && tx < CONF_CANCEL_X + CONF_ACT_BTN_W) {
+        confClose();
+        return;
+      }
+      if (tx >= CONF_SAVE_X && tx < CONF_SAVE_X + CONF_ACT_BTN_W) {
+        confSave();
+        return;
+      }
+    }
+
+    // Radius preset buttons
+    if (ty >= CONF_RAD_BTN_Y && ty < CONF_RAD_BTN_Y + CONF_RAD_BTN_H) {
+      int presetKm[3];
+      if (fc_use_miles) {
+        int miVals[3] = {15, 30, 60};
+        for (int i = 0; i < 3; i++)
+          presetKm[i] = (int)(miVals[i] * 1.60934f + 0.5f);
+      } else {
+        int kmVals[3] = {25, 50, 100};
+        for (int i = 0; i < 3; i++) presetKm[i] = kmVals[i];
+      }
+      for (int i = 0; i < 3; i++) {
+        int bx = CONF_IX + i * (CONF_RAD_BTN_W + 4);
+        if (tx >= bx && tx < bx + CONF_RAD_BTN_W) {
+          if (conf_pending_radius != presetKm[i]) {
+            conf_pending_radius = presetKm[i];
+            conf_dirty = (conf_pending_radius != fc_radius_km ||
+                          conf_pending_hide   != fc_hide_ground);
+            drawConf();
+          }
+          return;
+        }
+      }
+    }
+
+    // Hide-ground toggle
+    if (tx >= CONF_HID_BTN_X && tx < CONF_HID_BTN_X + CONF_HID_BTN_W &&
+        ty >= CONF_HID_BTN_Y && ty < CONF_HID_BTN_Y + CONF_HID_BTN_H) {
+      conf_pending_hide = !conf_pending_hide;
+      conf_dirty = (conf_pending_radius != fc_radius_km ||
+                    conf_pending_hide   != fc_hide_ground);
+      drawConf();
+      return;
+    }
+
+    // Tap outside overlay = cancel
+    if (tx < CONF_X || tx >= CONF_X + CONF_W ||
+        ty < CONF_Y || ty >= CONF_Y + CONF_H) {
+      confClose();
+    }
+    return;
+  }
+
+  // ── Footer: switch modes or open settings ──
   if (ty >= footerTouchY) {
-    int newMode = (tx < 107) ? MODE_RADAR : (tx < 214) ? MODE_STATS : MODE_LIST;
+    if (tx >= 285) {
+      confOpen();
+      return;
+    }
+    int newMode = (tx < 95) ? MODE_RADAR : (tx < 190) ? MODE_STATS : MODE_LIST;
     if (newMode != fc_mode) {
       fc_mode       = newMode;
       fc_detail_idx = -1;
@@ -898,15 +1111,21 @@ void setup() {
 // ---------------------------------------------------------------------------
 void loop() {
 
-  // BOOT button: cycle RADAR → STATS → LIST → RADAR
+  // BOOT button: short-press cycles modes, long-press (≥1s) toggles settings
   if (digitalRead(0) == LOW) {
     delay(50);
     if (digitalRead(0) == LOW) {
-      fc_mode = (fc_mode + 1) % 3;
-      fc_detail_idx = -1;
-      if (fc_mode == MODE_STATS) stats_fetching_types = true;
-      redraw();
+      unsigned long pressStart = millis();
       while (digitalRead(0) == LOW) delay(10);
+      if (millis() - pressStart >= 1000) {
+        if (conf_open) confClose();
+        else           confOpen();
+      } else if (!conf_open) {
+        fc_mode = (fc_mode + 1) % 3;
+        fc_detail_idx = -1;
+        if (fc_mode == MODE_STATS) stats_fetching_types = true;
+        redraw();
+      }
     }
   }
 
