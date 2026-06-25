@@ -1130,7 +1130,7 @@ static void handleTouch(int tx, int ty) {
 
   // ── Footer: switch modes or open settings ──
   if (ty >= footerTouchY) {
-    if (tx >= 285) {
+    if (tx >= 265) {
       confOpen();
       return;
     }
