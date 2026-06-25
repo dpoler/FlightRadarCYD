@@ -476,6 +476,12 @@ static void drawStats() {
   } else {
     gfx->print("Stats (last 24h)");
   }
+  {
+    const char *hint = "hold STATS to reset";
+    gfx->setTextColor(COL_DIM);
+    gfx->setCursor(320 - (int)strlen(hint) * 6 - 4, CONTENT_Y + 6);
+    gfx->print(hint);
+  }
   gfx->drawFastHLine(0, CONTENT_Y + 14, 320, COL_GRID);
 
   // Two-panel split: left=counts (~1/4), right=chart (~3/4)
@@ -1055,6 +1061,13 @@ static void confSave() {
     for (int i = 0; i < fc_flight_count; i++)
       if (fc_flights[i].dist_km <= fc_radius_km) fc_flights[n++] = fc_flights[i];
     fc_flight_count = n;
+    for (int j = 0; j < MAX_FLIGHTS; j++) {
+      if (!g_trails[j].icao[0]) continue;
+      bool found = false;
+      for (int k = 0; k < fc_flight_count && !found; k++)
+        if (strcmp(fc_flights[k].icao, g_trails[j].icao) == 0) found = true;
+      if (!found) { g_trails[j].icao[0] = '\0'; g_trails[j].n = 0; g_trails[j].age = 0; }
+    }
   }
   confClose();
 }

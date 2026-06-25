@@ -211,9 +211,9 @@ static void fcShowPortalScreen() {
   gfx->setTextColor(0xFFE0);
   gfx->setTextSize(1);
   gfx->setCursor(4, 118);
-  gfx->print("3. Enter WiFi, locations & radius,");
+  gfx->print("3. Enter WiFi & locations,");
   gfx->setCursor(4, 130);
-  gfx->print("   then tap  Save & Connect.");
+  gfx->print("   then tap Save & Connect.");
 
   if (fc_has_settings) {
     gfx->setTextColor(0x07E0);
@@ -330,7 +330,9 @@ static void fcHandleRoot() {
   }
   html +=
     "<label>Distance Units:</label>"
-    "<select name='units' id='units' onchange='swapRadii()'>"
+    "<p style='text-align:left;color:#88aacc;font-size:0.85em;margin:2px 0 8px'>"
+    "Scan radius and hide-ground are configured on the device (long-press BOOT).</p>"
+    "<select name='units'>"
     "<option value='km'";
   if (!fc_use_miles) html += " selected";
   html +=
@@ -340,84 +342,7 @@ static void fcHandleRoot() {
   html +=
     ">Miles (mi)</option>"
     "</select>"
-    "<label>Scan Radius:</label>"
-    "<p style='text-align:left;color:#88aacc;font-size:0.85em;margin:2px 0 8px'>"
-    "Inner rings appear at 1/3 and 2/3 of this distance. "
-    "Large values make the display cluttered. "
-    "OpenSky API maximum: 500 km / 310 mi.</p>"
-    "<select name='radius' id='radius_sel' onchange='checkCustom()'>";
-  {
-    int kmRadii[] = { 25, 50, 100 };
-    bool kmMatch = false;
-    for (int i = 0; i < 3; i++) if (kmRadii[i] == fc_radius_km) kmMatch = true;
-
-    int miRadii[] = { 15, 30, 60 };
-    int curMiRound = (int)(fc_radius_km * 0.621371f + 0.5f);
-    int miMatchIdx = -1;
-    for (int i = 0; i < 3; i++) {
-      int d = curMiRound - miRadii[i]; if (d < 0) d = -d;
-      if (d <= 2) { miMatchIdx = i; break; }
-    }
-
-    bool showCustom = fc_use_miles ? (miMatchIdx < 0) : !kmMatch;
-    int  customVal  = fc_use_miles ? curMiRound : fc_radius_km;
-
-    if (!fc_use_miles) {
-      for (int i = 0; i < 3; i++) {
-        html += "<option value='" + String(kmRadii[i]) + "'";
-        if (kmRadii[i] == fc_radius_km) html += " selected";
-        html += ">" + String(kmRadii[i]) + " km</option>";
-      }
-    } else {
-      for (int i = 0; i < 3; i++) {
-        html += "<option value='" + String(miRadii[i]) + "'";
-        if (i == miMatchIdx) html += " selected";
-        html += ">" + String(miRadii[i]) + " mi</option>";
-      }
-    }
-    html += "<option value='0'";
-    if (showCustom) html += " selected";
-    html += ">Custom...</option>"
-            "</select>"
-            "<div id='custom_div' style='margin-top:8px;display:";
-    html += showCustom ? "block" : "none";
-    html += "'>"
-            "<input type='number' id='radius_custom'"
-            " min='"; html += fc_use_miles ? "15" : "20";
-    html += "' max='"; html += fc_use_miles ? "310" : "500";
-    html += "' value='";
-    if (showCustom) html += String(customVal);
-    html += "' placeholder='Enter value'></div>";
-  }
-  html +=
-    "<script>"
-    "var kO='<option value=25>25 km</option><option value=50>50 km</option>"
-    "<option value=100>100 km</option><option value=0>Custom...</option>';"
-    "var mO='<option value=15>15 mi</option><option value=30>30 mi</option>"
-    "<option value=60>60 mi</option><option value=0>Custom...</option>';"
-    "function swapRadii(){"
-    "var miles=document.getElementById('units').value==='miles';"
-    "document.getElementById('radius_sel').innerHTML=miles?mO:kO;"
-    "var ci=document.getElementById('radius_custom');"
-    "ci.min=miles?15:20;ci.max=miles?310:500;ci.value='';"
-    "checkCustom();}"
-    "function checkCustom(){"
-    "var show=document.getElementById('radius_sel').value==='0';"
-    "document.getElementById('custom_div').style.display=show?'block':'none';"
-    "if(show)document.getElementById('radius_custom').focus();}"
-    "document.forms[0].addEventListener('submit',function(e){"
-    "var sel=document.getElementById('radius_sel');"
-    "if(sel.value==='0'){"
-    "var v=parseInt(document.getElementById('radius_custom').value);"
-    "if(!v||v<1){alert('Please enter a custom radius.');e.preventDefault();return;}"
-    "sel.value=v;}});"
-    "</script>"
-    "<label>Filter Options:</label>"
-    "<label style='font-weight:normal;display:flex;align-items:center;gap:8px'>"
-    "<input type='checkbox' name='hide_ground' value='1' style='width:auto'";
-  if (fc_hide_ground) html += " checked";
-  html +=
-    "> Hide aircraft on ground</label>"
+    "<label>Display Options:</label>"
     "<label style='font-weight:normal;display:flex;align-items:center;gap:8px'>"
     "<input type='checkbox' name='invert_display' value='1' style='width:auto'";
   if (fc_invert_display) html += " checked";
@@ -470,13 +395,11 @@ static void fcHandleRoot() {
 static void fcHandleSave() {
   String ssid       = portalServer->hasArg("ssid")   ? portalServer->arg("ssid")           : "";
   String pass       = portalServer->hasArg("pass")   ? portalServer->arg("pass")           : "";
-  bool use_miles    = portalServer->hasArg("units")  && portalServer->arg("units") == "miles";
-  int  radius_raw   = portalServer->hasArg("radius") ? portalServer->arg("radius").toInt() : 150;
-  int  radius       = use_miles ? (int)(radius_raw * 1.60934f + 0.5f) : radius_raw;
-  radius = constrain(radius, 20, 500);
-  String client_id  = portalServer->hasArg("client_id")     ? portalServer->arg("client_id")     : "";
-  String client_sec = portalServer->hasArg("client_secret") ? portalServer->arg("client_secret") : "";
-  bool hide_ground    = portalServer->hasArg("hide_ground");
+  bool use_miles      = portalServer->hasArg("units") && portalServer->arg("units") == "miles";
+  int  radius         = fc_radius_km;   // managed via on-device settings overlay
+  String client_id    = portalServer->hasArg("client_id")     ? portalServer->arg("client_id")     : "";
+  String client_sec   = portalServer->hasArg("client_secret") ? portalServer->arg("client_secret") : "";
+  bool hide_ground    = fc_hide_ground; // managed via on-device settings overlay
   bool invert_display = portalServer->hasArg("invert_display");
   String tz_posix   = portalServer->hasArg("tz_posix") ? portalServer->arg("tz_posix") : "UTC0";
   if (tz_posix.length() == 0 || tz_posix.length() >= 64) tz_posix = "UTC0";
@@ -546,7 +469,7 @@ static void fcHandleSave() {
     "</head><body>"
     "<h2>&#9989; Settings Saved!</h2>"
     "<p>Connecting to <b>" + ssid + "</b>...</p>"
-    "<p>Scan radius: <b>" + String(radius_raw) + (use_miles ? " mi" : " km") + "</b></p>"
+    "<p>Distance units: <b>" + String(use_miles ? "miles" : "km") + "</b></p>"
     "<p>Refresh: <b>" + (client_id.length() > 0 ? "30 sec (authenticated)" : "4 min (anonymous)") + "</b></p>"
     "<p>You can close this page and disconnect from <b>FlightRadarCYD_Setup</b>.</p>"
     "</body></html>");
