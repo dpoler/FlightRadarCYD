@@ -153,12 +153,16 @@ static void showStatus(const char *msg) {
   Serial.println(msg);
 }
 
-// Choose aircraft colour based on altitude / on_ground
+// Choose aircraft colour based on altitude / on_ground / vertical rate.
+// High altitude (>10 000ft AGL): cyan regardless of vertical rate.
+// Low altitude: yellow=level, green=climbing (≥2 m/s), orange=descending (≤-2 m/s).
 static uint16_t acColor(const FlightData &f) {
   if (f.on_ground) return COL_AC_GND;
   float threshold_m = 3048.0f + fc_elevation_ft * 0.3048f;  // 10 000 ft AGL
-  if (!isnan(f.alt_m) && f.alt_m <= threshold_m) return COL_AC_LOW;
-  return COL_AC_HIGH;
+  if (isnan(f.alt_m) || f.alt_m > threshold_m) return COL_AC_HIGH;
+  if (!isnan(f.vert_ms) && f.vert_ms >=  2.0f) return COL_GREEN;
+  if (!isnan(f.vert_ms) && f.vert_ms <= -2.0f) return COL_ACCENT;
+  return COL_AC_LOW;
 }
 
 // Convert m/s → knots, m → feet, m/s → feet-per-minute
