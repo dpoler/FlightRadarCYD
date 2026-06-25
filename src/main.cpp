@@ -62,19 +62,27 @@ static unsigned long lastTouchTime = 0;
 #define CONF_H         184
 #define CONF_IX        (CONF_X + 8)           // inner left edge (8px padding)
 #define CONF_IW        (CONF_W - 16)          // inner width = 284px
-// Radius preset buttons: 3 × 92px with 4px gaps, starting at CONF_IX
+// Three content rows (Scan Radius / Distance Units / Hide Ground), tightly spaced
+#define CONF_ROW_BTN_H 22
+// Row 1 — Scan Radius: 3 × 92px preset buttons
 #define CONF_RAD_BTN_W 92
-#define CONF_RAD_BTN_H 22
-#define CONF_RAD_BTN_Y (CONF_Y + 43)         // y=71
-// Hide-ground toggle: 120px wide, centered
+#define CONF_RAD_BTN_H CONF_ROW_BTN_H
+#define CONF_RAD_BTN_Y (CONF_Y + 35)         // y=63
+// Row 2 — Distance Units: two 60px buttons [km][mi], centered, 4px gap
+#define CONF_UNI_BTN_W 60
+#define CONF_UNI_BTN_H CONF_ROW_BTN_H
+#define CONF_UNI_BTN_Y (CONF_RAD_BTN_Y + CONF_RAD_BTN_H + 19)  // y=104
+#define CONF_UNI_KM_X  (CONF_IX + (CONF_IW - 124) / 2)         // centred pair
+#define CONF_UNI_MI_X  (CONF_UNI_KM_X + CONF_UNI_BTN_W + 4)
+// Row 3 — Hide Ground: 120px toggle, centered
 #define CONF_HID_BTN_W 120
-#define CONF_HID_BTN_H 22
+#define CONF_HID_BTN_H CONF_ROW_BTN_H
 #define CONF_HID_BTN_X (CONF_IX + (CONF_IW - CONF_HID_BTN_W) / 2)
-#define CONF_HID_BTN_Y (CONF_RAD_BTN_Y + CONF_RAD_BTN_H + 32)  // y=125
+#define CONF_HID_BTN_Y (CONF_UNI_BTN_Y + CONF_UNI_BTN_H + 19)  // y=145
 // Save/Cancel buttons along the bottom
 #define CONF_ACT_BTN_W ((CONF_IW - 4) / 2)   // 140px each, 4px gap
 #define CONF_ACT_BTN_H 22
-#define CONF_ACT_BTN_Y (CONF_Y + CONF_H - CONF_ACT_BTN_H - 6)  // y=178
+#define CONF_ACT_BTN_Y (CONF_Y + CONF_H - CONF_ACT_BTN_H - 6)  // y=184
 #define CONF_CANCEL_X  CONF_IX
 #define CONF_SAVE_X    (CONF_IX + CONF_ACT_BTN_W + 4)
 
@@ -111,6 +119,7 @@ static int  fc_detail_idx   = -1;          // -1 = no detail overlay
 static bool conf_open           = false;
 static int  conf_pending_radius = 0;
 static bool conf_pending_hide   = false;
+static bool conf_pending_miles  = false;
 static bool conf_dirty          = false;
 static unsigned long fc_last_fetch   = 0;  // last successful fetch (drives "upd" display)
 static unsigned long fc_last_attempt = 0;  // last fetch attempt, success or failure (throttles retries)
@@ -790,25 +799,24 @@ static void drawConf() {
   gfx->fillRect(CONF_X, CONF_Y, CONF_W, CONF_H, 0x0841);
   gfx->drawRect(CONF_X, CONF_Y, CONF_W, CONF_H, COL_TITLE);
 
-  // Title bar
+  // Title bar — asterisk indicates unsaved changes
   int titleDivY = CONF_Y + 19;
   gfx->fillRect(CONF_X + 1, CONF_Y + 1, CONF_W - 2, 18, 0x1082);
   gfx->drawFastHLine(CONF_X, titleDivY, CONF_W, COL_TITLE);
   gfx->setTextColor(COL_TITLE);
   gfx->setTextSize(1);
-  const char *title = "* SETTINGS";
+  const char *title = conf_dirty ? "* SETTINGS" : "  SETTINGS";
   gfx->setCursor(CONF_X + (CONF_W - (int)strlen(title) * 6) / 2, CONF_Y + 6);
   gfx->print(title);
 
-  // ── Scan Radius ──
+  // ── Row 1: Scan Radius ──
   gfx->setTextColor(RGB565_WHITE);
-  gfx->setCursor(CONF_IX, CONF_Y + 26);
+  gfx->setCursor(CONF_IX, CONF_RAD_BTN_Y - 10);
   gfx->print("Scan Radius:");
 
-  // Build preset labels and km values matching portal
   int presetKm[3];
   char presetLbl[3][8];
-  if (fc_use_miles) {
+  if (conf_pending_miles) {
     int miVals[3] = {15, 30, 60};
     for (int i = 0; i < 3; i++) {
       presetKm[i] = (int)(miVals[i] * 1.60934f + 0.5f);
@@ -821,28 +829,27 @@ static void drawConf() {
       snprintf(presetLbl[i], sizeof(presetLbl[i]), "%d km", kmVals[i]);
     }
   }
-
   for (int i = 0; i < 3; i++) {
     int bx = CONF_IX + i * (CONF_RAD_BTN_W + 4);
     drawConfBtn(bx, CONF_RAD_BTN_Y, CONF_RAD_BTN_W, CONF_RAD_BTN_H,
                 presetLbl[i], conf_pending_radius == presetKm[i]);
   }
 
-  // ── Hide aircraft on ground ──
+  // ── Row 2: Distance Units ──
   gfx->setTextColor(RGB565_WHITE);
-  gfx->setCursor(CONF_IX, CONF_HID_BTN_Y - 13);
-  gfx->print("Hide aircraft on ground:");
+  gfx->setCursor(CONF_IX, CONF_UNI_BTN_Y - 10);
+  gfx->print("Distance Units:");
+  drawConfBtn(CONF_UNI_KM_X, CONF_UNI_BTN_Y, CONF_UNI_BTN_W, CONF_UNI_BTN_H,
+              "km", !conf_pending_miles);
+  drawConfBtn(CONF_UNI_MI_X, CONF_UNI_BTN_Y, CONF_UNI_BTN_W, CONF_UNI_BTN_H,
+              "mi", conf_pending_miles);
 
+  // ── Row 3: Hide Ground ──
+  gfx->setTextColor(RGB565_WHITE);
+  gfx->setCursor(CONF_IX, CONF_HID_BTN_Y - 10);
+  gfx->print("Hide aircraft on ground:");
   drawConfBtn(CONF_HID_BTN_X, CONF_HID_BTN_Y, CONF_HID_BTN_W, CONF_HID_BTN_H,
               conf_pending_hide ? "ON" : "OFF", conf_pending_hide);
-
-  // ── Unsaved indicator ──
-  int dirtyY = CONF_HID_BTN_Y + CONF_HID_BTN_H + 8;
-  if (conf_dirty) {
-    gfx->setTextColor(COL_ACCENT);
-    gfx->setCursor(CONF_IX, dirtyY);
-    gfx->print("* unsaved  \x18  Cancel discards changes");
-  }
 
   // ── Bottom divider + action buttons ──
   gfx->drawFastHLine(CONF_X, CONF_ACT_BTN_Y - 4, CONF_W, COL_TITLE);
@@ -854,9 +861,27 @@ static void drawConf() {
 
 static void redraw();  // forward declaration
 
+// Snap radius_km to the nearest preset for the given unit system
+static int snapToPreset(int radius_km, bool use_miles) {
+  int km[3];
+  if (use_miles) {
+    int mi[3] = {15, 30, 60};
+    for (int i = 0; i < 3; i++) km[i] = (int)(mi[i] * 1.60934f + 0.5f);
+  } else {
+    km[0] = 25; km[1] = 50; km[2] = 100;
+  }
+  int best = km[0], bestD = abs(radius_km - km[0]);
+  for (int i = 1; i < 3; i++) {
+    int d = abs(radius_km - km[i]);
+    if (d < bestD) { bestD = d; best = km[i]; }
+  }
+  return best;
+}
+
 static void confOpen() {
   conf_pending_radius = fc_radius_km;
   conf_pending_hide   = fc_hide_ground;
+  conf_pending_miles  = fc_use_miles;
   conf_dirty          = false;
   conf_open           = true;
   drawFooter();
@@ -869,15 +894,27 @@ static void confClose() {
 }
 
 static void confSave() {
+  bool needsFetch    = (conf_pending_radius > fc_radius_km) ||
+                       (conf_pending_hide   != fc_hide_ground);
+  bool radiusShrank  = (conf_pending_radius < fc_radius_km);
   fc_radius_km   = conf_pending_radius;
   fc_hide_ground = conf_pending_hide;
+  fc_use_miles   = conf_pending_miles;
   Preferences prefs;
   prefs.begin("flightcyd", false);
   prefs.putInt ("radius",   fc_radius_km);
   prefs.putBool("hide_gnd", fc_hide_ground);
+  prefs.putBool("miles",    fc_use_miles);
   prefs.end();
-  conf_dirty      = false;
-  fc_last_attempt = 0;  // trigger immediate refresh with new settings
+  conf_dirty = false;
+  if (needsFetch) {
+    fc_last_attempt = 0;
+  } else if (radiusShrank) {
+    int n = 0;
+    for (int i = 0; i < fc_flight_count; i++)
+      if (fc_flights[i].dist_km <= fc_radius_km) fc_flights[n++] = fc_flights[i];
+    fc_flight_count = n;
+  }
   confClose();
 }
 
@@ -936,7 +973,7 @@ static void handleTouch(int tx, int ty) {
     // Radius preset buttons
     if (ty >= CONF_RAD_BTN_Y && ty < CONF_RAD_BTN_Y + CONF_RAD_BTN_H) {
       int presetKm[3];
-      if (fc_use_miles) {
+      if (conf_pending_miles) {
         int miVals[3] = {15, 30, 60};
         for (int i = 0; i < 3; i++)
           presetKm[i] = (int)(miVals[i] * 1.60934f + 0.5f);
@@ -950,7 +987,8 @@ static void handleTouch(int tx, int ty) {
           if (conf_pending_radius != presetKm[i]) {
             conf_pending_radius = presetKm[i];
             conf_dirty = (conf_pending_radius != fc_radius_km ||
-                          conf_pending_hide   != fc_hide_ground);
+                          conf_pending_hide   != fc_hide_ground ||
+                          conf_pending_miles  != fc_use_miles);
             drawConf();
           }
           return;
@@ -958,12 +996,29 @@ static void handleTouch(int tx, int ty) {
       }
     }
 
+    // Distance Units buttons
+    if (ty >= CONF_UNI_BTN_Y && ty < CONF_UNI_BTN_Y + CONF_UNI_BTN_H) {
+      bool newMiles = conf_pending_miles;
+      if (tx >= CONF_UNI_KM_X && tx < CONF_UNI_KM_X + CONF_UNI_BTN_W) newMiles = false;
+      if (tx >= CONF_UNI_MI_X && tx < CONF_UNI_MI_X + CONF_UNI_BTN_W) newMiles = true;
+      if (newMiles != conf_pending_miles) {
+        conf_pending_miles  = newMiles;
+        conf_pending_radius = snapToPreset(conf_pending_radius, conf_pending_miles);
+        conf_dirty = (conf_pending_radius != fc_radius_km ||
+                      conf_pending_hide   != fc_hide_ground ||
+                      conf_pending_miles  != fc_use_miles);
+        drawConf();
+      }
+      return;
+    }
+
     // Hide-ground toggle
     if (tx >= CONF_HID_BTN_X && tx < CONF_HID_BTN_X + CONF_HID_BTN_W &&
         ty >= CONF_HID_BTN_Y && ty < CONF_HID_BTN_Y + CONF_HID_BTN_H) {
       conf_pending_hide = !conf_pending_hide;
       conf_dirty = (conf_pending_radius != fc_radius_km ||
-                    conf_pending_hide   != fc_hide_ground);
+                    conf_pending_hide   != fc_hide_ground ||
+                    conf_pending_miles  != fc_use_miles);
       drawConf();
       return;
     }
