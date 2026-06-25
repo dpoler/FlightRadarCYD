@@ -6,6 +6,8 @@
 #include <DNSServer.h>
 #include <Preferences.h>
 #include <WiFi.h>
+#include <LittleFS.h>
+#include <ArduinoJson.h>
 
 extern Arduino_GFX *gfx;
 
@@ -25,9 +27,88 @@ char fc_tz_posix[64]      = "UTC0";
 bool fc_has_settings      = false;
 bool portalDone           = false;
 
+// Location globals
+LocationEntry fc_locations[MAX_LOCATIONS] = {};
+int           fc_loc_count  = 1;
+int           fc_active_loc = 0;
+
 // Portal state (private)
 static WebServer *portalServer = nullptr;
 static DNSServer *portalDNS    = nullptr;
+
+void fcApplyLocation(int idx) {
+  if (idx < 0 || idx >= fc_loc_count) return;
+  strncpy(fc_lat, fc_locations[idx].lat,  sizeof(fc_lat)  - 1); fc_lat[sizeof(fc_lat)-1]  = '\0';
+  strncpy(fc_lon, fc_locations[idx].lon,  sizeof(fc_lon)  - 1); fc_lon[sizeof(fc_lon)-1]  = '\0';
+  fc_elevation_ft = fc_locations[idx].elevation_ft;
+}
+
+void fcSaveLocations() {
+  DynamicJsonDocument doc(512);
+  JsonArray arr = doc.to<JsonArray>();
+  for (int i = 0; i < fc_loc_count; i++) {
+    JsonObject obj = arr.createNestedObject();
+    obj["name"] = fc_locations[i].name;
+    obj["lat"]  = fc_locations[i].lat;
+    obj["lon"]  = fc_locations[i].lon;
+    obj["elev"] = fc_locations[i].elevation_ft;
+  }
+  File f = LittleFS.open("/locations.json", "w");
+  if (f) { serializeJson(doc, f); f.close(); }
+
+  Preferences prefs;
+  prefs.begin("flightcyd", false);
+  prefs.putInt("loc_idx", fc_active_loc);
+  prefs.end();
+}
+
+void fcLoadLocations() {
+  // Load active location index from NVS
+  {
+    Preferences prefs;
+    prefs.begin("flightcyd", true);
+    fc_active_loc = prefs.getInt("loc_idx", 0);
+    prefs.end();
+  }
+
+  // Try loading locations.json from LittleFS
+  File f = LittleFS.open("/locations.json", "r");
+  if (f) {
+    DynamicJsonDocument doc(512);
+    DeserializationError err = deserializeJson(doc, f);
+    f.close();
+    if (!err && doc.is<JsonArray>()) {
+      JsonArray arr = doc.as<JsonArray>();
+      fc_loc_count = 0;
+      for (JsonObject obj : arr) {
+        if (fc_loc_count >= MAX_LOCATIONS) break;
+        LocationEntry &e = fc_locations[fc_loc_count++];
+        const char *n  = obj["name"]; strlcpy(e.name, n  ? n  : "",    sizeof(e.name));
+        const char *la = obj["lat"];  strlcpy(e.lat,  la ? la : "",    sizeof(e.lat));
+        const char *lo = obj["lon"];  strlcpy(e.lon,  lo ? lo : "",    sizeof(e.lon));
+        e.elevation_ft = obj["elev"] | 0;
+      }
+    }
+  }
+
+  if (fc_loc_count == 0) {
+    // Migration: create location[0] from existing NVS lat/lon
+    fc_loc_count = 1;
+    fc_active_loc = 0;
+    strlcpy(fc_locations[0].name, "HOME", sizeof(fc_locations[0].name));
+    strlcpy(fc_locations[0].lat,  fc_lat, sizeof(fc_locations[0].lat));
+    strlcpy(fc_locations[0].lon,  fc_lon, sizeof(fc_locations[0].lon));
+    fc_locations[0].elevation_ft = fc_elevation_ft;
+    fcSaveLocations();
+    Serial.println("[Portal] Migrated lat/lon to locations.json");
+  }
+
+  fc_active_loc = constrain(fc_active_loc, 0, fc_loc_count - 1);
+  fcApplyLocation(fc_active_loc);
+  Serial.printf("[Portal] Active location %d: %s (%s, %s)\n",
+                fc_active_loc, fc_locations[fc_active_loc].name,
+                fc_lat, fc_lon);
+}
 
 void fcLoadSettings() {
   Preferences prefs;
@@ -130,7 +211,7 @@ static void fcShowPortalScreen() {
   gfx->setTextColor(0xFFE0);
   gfx->setTextSize(1);
   gfx->setCursor(4, 118);
-  gfx->print("3. Enter WiFi, location & radius,");
+  gfx->print("3. Enter WiFi, locations & radius,");
   gfx->setCursor(4, 130);
   gfx->print("   then tap  Save & Connect.");
 
@@ -142,6 +223,11 @@ static void fcShowPortalScreen() {
     gfx->print("'No Changes' to keep them.");
   }
 }
+
+// Shared input style for table cells
+static const char *CELL_STYLE =
+  "width:100%;box-sizing:border-box;background:#001122;color:#00ccff;"
+  "border:1px solid #0066aa;border-radius:4px;padding:5px;font-size:0.9em";
 
 static void fcHandleRoot() {
   String html =
@@ -155,8 +241,8 @@ static void fcHandleRoot() {
     "h1{color:#00ffff;font-size:1.6em;margin-bottom:4px;}"
     "p{color:#88aacc;font-size:0.9em;}"
     "label{display:block;text-align:left;margin:14px 0 4px;color:#88ddff;font-weight:bold;}"
-    "input,select{width:100%;box-sizing:border-box;background:#001122;color:#00ccff;"
-                 "border:2px solid #0066aa;border-radius:6px;padding:10px;font-size:1em;}"
+    "input,select,textarea{width:100%;box-sizing:border-box;background:#001122;color:#00ccff;"
+                           "border:2px solid #0066aa;border-radius:6px;padding:10px;font-size:1em;}"
     ".btn{display:block;width:100%;padding:14px;margin:10px 0;font-size:1.05em;"
          "border-radius:8px;border:none;cursor:pointer;font-weight:bold;}"
     ".btn-save{background:#004488;color:#00ffff;border:2px solid #0099dd;}"
@@ -164,6 +250,8 @@ static void fcHandleRoot() {
     ".btn-skip{background:#1a1a2e;color:#667788;border:2px solid #334455;}"
     ".note{color:#445566;font-size:0.82em;margin-top:16px;}"
     "hr{border:1px solid #113355;margin:20px 0;}"
+    "th{color:#88ddff;text-align:left;padding:3px 4px;font-size:0.85em;font-weight:normal;}"
+    "td{padding:2px 3px;}"
     "</style></head><body>"
     "<h1>&#9992; FlightRadarCYD Setup</h1>"
     "<p>Live aircraft radar for the CYD display.</p>"
@@ -178,21 +266,38 @@ static void fcHandleRoot() {
   html += String(fc_wifi_pass);
   html +=
     "' placeholder='Leave blank if open network' maxlength='63'>"
-    "<label>Your Latitude:</label>"
-    "<input type='text' name='lat' value='";
-  html += String(fc_lat);
+
+    // ── Locations section ──
+    "<label>Favorite Locations (up to 4):</label>"
+    "<p style='text-align:left;color:#88aacc;font-size:0.85em;margin:2px 0 8px'>"
+    "Name max 8 chars (e.g. HOME, KLAX). First location required. "
+    "Leave Name and Lat blank to remove slots 2-4.</p>"
+    "<table style='width:100%;border-collapse:collapse'>"
+    "<thead><tr><th>Name</th><th>Latitude</th><th>Longitude</th><th>Elev ft</th></tr></thead>"
+    "<tbody>";
+
+  for (int i = 0; i < MAX_LOCATIONS; i++) {
+    const char *name = (i < fc_loc_count) ? fc_locations[i].name : "";
+    const char *lat  = (i < fc_loc_count) ? fc_locations[i].lat  : "";
+    const char *lon  = (i < fc_loc_count) ? fc_locations[i].lon  : "";
+    int   elev       = (i < fc_loc_count) ? fc_locations[i].elevation_ft : 0;
+    html += "<tr><td><input name='loc" + String(i) + "_name' maxlength='8' value='";
+    html += String(name);
+    html += "' style='" + String(CELL_STYLE) + "'></td>";
+    html += "<td><input name='loc" + String(i) + "_lat' maxlength='15' value='";
+    html += String(lat);
+    html += "' placeholder='38.8894' style='" + String(CELL_STYLE) + "'></td>";
+    html += "<td><input name='loc" + String(i) + "_lon' maxlength='15' value='";
+    html += String(lon);
+    html += "' placeholder='-77.035' style='" + String(CELL_STYLE) + "'></td>";
+    html += "<td><input type='number' name='loc" + String(i) + "_elev' min='-1500' max='20000' value='";
+    html += String(elev);
+    html += "' style='" + String(CELL_STYLE) + "'></td></tr>";
+  }
+  html += "</tbody></table>";
+
+  // ── Time zone ──
   html +=
-    "' placeholder='e.g. 38.8894' maxlength='15'>"
-    "<label>Your Longitude:</label>"
-    "<input type='text' name='lon' value='";
-  html += String(fc_lon);
-  html +=
-    "' placeholder='e.g. -77.0352' maxlength='15'>"
-    "<label>Your Elevation (feet MSL):</label>"
-    "<input type='number' name='elevation' min='-1500' max='20000' value='";
-  html += String(fc_elevation_ft);
-  html +=
-    "' placeholder='e.g. 5430 for Denver, 0 for sea level'>"
     "<label>Time Zone:</label>"
     "<p style='text-align:left;color:#88aacc;font-size:0.85em;margin:2px 0 8px'>"
     "Used for the stats screen daily reset (midnight in your local time).</p>";
@@ -363,21 +468,17 @@ static void fcHandleRoot() {
 }
 
 static void fcHandleSave() {
-  String ssid   = portalServer->hasArg("ssid")   ? portalServer->arg("ssid")           : "";
-  String pass   = portalServer->hasArg("pass")   ? portalServer->arg("pass")           : "";
-  String lat    = portalServer->hasArg("lat")    ? portalServer->arg("lat")            : "";
-  String lon    = portalServer->hasArg("lon")    ? portalServer->arg("lon")            : "";
-  bool   use_miles  = portalServer->hasArg("units") && portalServer->arg("units") == "miles";
-  int    radius_raw = portalServer->hasArg("radius") ? portalServer->arg("radius").toInt() : 150;
-  int    radius     = use_miles ? (int)(radius_raw * 1.60934f + 0.5f) : radius_raw;
+  String ssid       = portalServer->hasArg("ssid")   ? portalServer->arg("ssid")           : "";
+  String pass       = portalServer->hasArg("pass")   ? portalServer->arg("pass")           : "";
+  bool use_miles    = portalServer->hasArg("units")  && portalServer->arg("units") == "miles";
+  int  radius_raw   = portalServer->hasArg("radius") ? portalServer->arg("radius").toInt() : 150;
+  int  radius       = use_miles ? (int)(radius_raw * 1.60934f + 0.5f) : radius_raw;
   radius = constrain(radius, 20, 500);
   String client_id  = portalServer->hasArg("client_id")     ? portalServer->arg("client_id")     : "";
   String client_sec = portalServer->hasArg("client_secret") ? portalServer->arg("client_secret") : "";
-  bool   hide_ground    = portalServer->hasArg("hide_ground");
-  bool   invert_display = portalServer->hasArg("invert_display");
-  int    elevation_ft   = portalServer->hasArg("elevation") ? portalServer->arg("elevation").toInt() : 0;
-  elevation_ft = constrain(elevation_ft, -1500, 20000);
-  String tz_posix = portalServer->hasArg("tz_posix") ? portalServer->arg("tz_posix") : "UTC0";
+  bool hide_ground    = portalServer->hasArg("hide_ground");
+  bool invert_display = portalServer->hasArg("invert_display");
+  String tz_posix   = portalServer->hasArg("tz_posix") ? portalServer->arg("tz_posix") : "UTC0";
   if (tz_posix.length() == 0 || tz_posix.length() >= 64) tz_posix = "UTC0";
 
   if (ssid.length() == 0) {
@@ -389,16 +490,53 @@ static void fcHandleSave() {
     return;
   }
 
-  bool locationChanged = fc_has_settings &&
-                         (strcmp(lat.c_str(), fc_lat) != 0 || strcmp(lon.c_str(), fc_lon) != 0);
+  // Parse location entries from form
+  LocationEntry newLoc[MAX_LOCATIONS] = {};
+  int newLocCount = 0;
+  for (int i = 0; i < MAX_LOCATIONS; i++) {
+    String nameArg = "loc" + String(i) + "_name";
+    if (!portalServer->hasArg(nameArg)) continue;
+    String name = portalServer->arg(nameArg); name.trim();
+    String lat  = portalServer->arg("loc" + String(i) + "_lat"); lat.trim();
+    // Skip empty non-first slots
+    if (i > 0 && name.length() == 0 && lat.length() == 0) continue;
+    if (name.length() == 0) name = (i == 0) ? "HOME" : ("LOC" + String(i + 1));
+    String lon  = portalServer->arg("loc" + String(i) + "_lon"); lon.trim();
+    int elev    = portalServer->arg("loc" + String(i) + "_elev").toInt();
+    elev = constrain(elev, -1500, 20000);
+    strncpy(newLoc[newLocCount].name, name.c_str(), 8); newLoc[newLocCount].name[8] = '\0';
+    strncpy(newLoc[newLocCount].lat,  lat.c_str(),  15); newLoc[newLocCount].lat[15] = '\0';
+    strncpy(newLoc[newLocCount].lon,  lon.c_str(),  15); newLoc[newLocCount].lon[15] = '\0';
+    newLoc[newLocCount].elevation_ft = elev;
+    newLocCount++;
+  }
+  if (newLocCount == 0) newLocCount = 1;
 
-  fcSaveSettings(ssid.c_str(), pass.c_str(), lat.c_str(), lon.c_str(), radius, use_miles,
-                 client_id.c_str(), client_sec.c_str(), hide_ground, elevation_ft, tz_posix.c_str(),
-                 invert_display);
+  // Detect active-location change (for stats reset)
+  bool locationChanged = fc_has_settings &&
+    (strcmp(newLoc[0].lat, fc_lat) != 0 ||
+     strcmp(newLoc[0].lon, fc_lon) != 0 ||
+     fc_active_loc != 0);
+
+  // Update location globals and apply location[0]
+  memcpy(fc_locations, newLoc, sizeof(LocationEntry) * newLocCount);
+  for (int i = newLocCount; i < MAX_LOCATIONS; i++) fc_locations[i] = {};
+  fc_loc_count  = newLocCount;
+  fc_active_loc = 0;
+  fcApplyLocation(0);
+
+  // Save WiFi/radius/etc to NVS (lat/lon/elev saved from location[0])
+  fcSaveSettings(ssid.c_str(), pass.c_str(), fc_lat, fc_lon, radius, use_miles,
+                 client_id.c_str(), client_sec.c_str(), hide_ground,
+                 fc_elevation_ft, tz_posix.c_str(), invert_display);
+
+  // Save locations to LittleFS
+  fcSaveLocations();
 
   if (locationChanged) {
+    setStatsLocation(0);
     resetStats();
-    Serial.printf("[Portal] Location changed to %s, %s — stats reset\n", fc_lat, fc_lon);
+    Serial.printf("[Portal] Location changed to %s,%s — stats reset\n", fc_lat, fc_lon);
   }
 
   portalServer->send(200, "text/html",

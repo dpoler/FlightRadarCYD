@@ -30,7 +30,9 @@ extern uint8_t    stats_hourly_unique[24];
 extern int        stats_current_hour;
 extern bool       stats_fetching_types;
 extern volatile bool stats_type_arrived;
+extern bool          stats_seen_capped;
 
+void setStatsLocation(int idx);
 void resetStats();
 void saveStats();
 void loadStats();

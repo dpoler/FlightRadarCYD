@@ -63,7 +63,7 @@ static unsigned long lastTouchTime = 0;
 #define CONF_H         210
 #define CONF_IX        (CONF_X + 8)           // inner left edge (8px padding)
 #define CONF_IW        (CONF_W - 16)          // inner width = 284px
-// Four content rows (Scan Radius / Distance Units / Hide Ground / Firmware), tightly spaced
+// Five content rows (Scan Radius / Distance Units / Hide Ground / Location / Firmware)
 #define CONF_ROW_BTN_H 22
 // Row 1 — Scan Radius: 3 × 92px preset buttons
 #define CONF_RAD_BTN_W 92
@@ -72,16 +72,22 @@ static unsigned long lastTouchTime = 0;
 // Row 2 — Distance Units: two 60px buttons [km][mi], centered, 4px gap
 #define CONF_UNI_BTN_W 60
 #define CONF_UNI_BTN_H CONF_ROW_BTN_H
-#define CONF_UNI_BTN_Y (CONF_RAD_BTN_Y + CONF_RAD_BTN_H + 19)  // y=104
+#define CONF_UNI_BTN_Y (CONF_RAD_BTN_Y + CONF_RAD_BTN_H + 12)  // y=97
 #define CONF_UNI_KM_X  (CONF_IX + (CONF_IW - 124) / 2)         // centred pair
 #define CONF_UNI_MI_X  (CONF_UNI_KM_X + CONF_UNI_BTN_W + 4)
 // Row 3 — Hide Ground: 120px toggle, centered
 #define CONF_HID_BTN_W 120
 #define CONF_HID_BTN_H CONF_ROW_BTN_H
 #define CONF_HID_BTN_X (CONF_IX + (CONF_IW - CONF_HID_BTN_W) / 2)
-#define CONF_HID_BTN_Y (CONF_UNI_BTN_Y + CONF_UNI_BTN_H + 19)  // y=145
-// Row 4 — Firmware OTA: label + action button on the right
-#define CONF_FW_ROW_Y  (CONF_HID_BTN_Y + CONF_HID_BTN_H + 7)   // y=174
+#define CONF_HID_BTN_Y (CONF_UNI_BTN_Y + CONF_UNI_BTN_H + 12)  // y=131
+// Row 4 — Location selector: [<] NAME [>] inline
+#define CONF_LOC_ROW_Y (CONF_HID_BTN_Y + CONF_HID_BTN_H + 10)  // y=163
+#define CONF_LOC_ROW_H 18
+#define CONF_LOC_BTN_W 22
+#define CONF_LOC_PREV_X (CONF_IX + 66)
+#define CONF_LOC_NEXT_X (CONF_IX + CONF_IW - CONF_LOC_BTN_W)
+// Row 5 — Firmware OTA: label + action button on the right
+#define CONF_FW_ROW_Y  (CONF_LOC_ROW_Y + CONF_LOC_ROW_H + 5)   // y=186
 #define CONF_FW_BTN_H  20
 #define CONF_FW_BTN_W  76
 #define CONF_FW_BTN_X  (CONF_IX + CONF_IW - CONF_FW_BTN_W)
@@ -126,7 +132,13 @@ static bool conf_open           = false;
 static int  conf_pending_radius = 0;
 static bool conf_pending_hide   = false;
 static bool conf_pending_miles  = false;
+static int  conf_pending_loc    = 0;
 static bool conf_dirty          = false;
+
+// Long-press STATS for reset
+static unsigned long stats_lp_start = 0;
+static bool stats_lp_armed = false;
+static bool stats_lp_fired = false;
 static bool          ota_check_pending = false;   // deferred until no TLS session is running
 static unsigned long ota_done_millis   = 0;       // millis() when OTA_DONE was first seen
 static unsigned long fc_last_fetch   = 0;  // last successful fetch (drives "upd" display)
@@ -457,7 +469,13 @@ static void drawStats() {
   // — Header: title + horizontal rule —
   gfx->setTextColor(COL_ACCENT);
   gfx->setCursor(4, CONTENT_Y + 6);
-  gfx->print("Stats (last 24h)");
+  if (fc_loc_count > 1) {
+    char stitle[28];
+    snprintf(stitle, sizeof(stitle), "Stats: %.8s (24h)", fc_locations[fc_active_loc].name);
+    gfx->print(stitle);
+  } else {
+    gfx->print("Stats (last 24h)");
+  }
   gfx->drawFastHLine(0, CONTENT_Y + 14, 320, COL_GRID);
 
   // Two-panel split: left=counts (~1/4), right=chart (~3/4)
@@ -476,7 +494,12 @@ static void drawStats() {
     };
     statRow(CONTENT_Y + 26, "Current:", fc_flight_count);
     statRow(CONTENT_Y + 40, "Max:",     stats_peak_count);
-    statRow(CONTENT_Y + 54, "Unique:",  stats_unique_count);
+    if (stats_seen_capped) {
+      gfx->setTextColor(COL_DIM);  gfx->setCursor(4, CONTENT_Y + 54); gfx->print("Unique:");
+      gfx->setTextColor(COL_TITLE); gfx->print(" >2000");
+    } else {
+      statRow(CONTENT_Y + 54, "Unique:", stats_unique_count);
+    }
     statRow(CONTENT_Y + 68, "Updates:", stats_fetch_count);
     if (stats_fetch_fail_count > 0)
       statRow(CONTENT_Y + 82, "Errors:",  stats_fetch_fail_count);
@@ -932,7 +955,24 @@ static void drawConf() {
   drawConfBtn(CONF_HID_BTN_X, CONF_HID_BTN_Y, CONF_HID_BTN_W, CONF_HID_BTN_H,
               conf_pending_hide ? "ON" : "OFF", conf_pending_hide);
 
-  // ── Row 4: Firmware / OTA ──
+  // ── Row 4: Location selector ──
+  gfx->fillRect(CONF_IX, CONF_LOC_ROW_Y, CONF_IW, CONF_LOC_ROW_H, 0x0000);
+  gfx->setTextColor(RGB565_WHITE);
+  gfx->setCursor(CONF_IX, CONF_LOC_ROW_Y + (CONF_LOC_ROW_H - 8) / 2);
+  gfx->print("Location:");
+  drawConfBtn(CONF_LOC_PREV_X, CONF_LOC_ROW_Y, CONF_LOC_BTN_W, CONF_LOC_ROW_H, "<", false);
+  drawConfBtn(CONF_LOC_NEXT_X, CONF_LOC_ROW_Y, CONF_LOC_BTN_W, CONF_LOC_ROW_H, ">", false);
+  {
+    const char *lname = fc_locations[conf_pending_loc].name;
+    int nw = strlen(lname) * 6;
+    int nameX = CONF_LOC_PREV_X + CONF_LOC_BTN_W +
+                (CONF_LOC_NEXT_X - CONF_LOC_PREV_X - CONF_LOC_BTN_W - nw) / 2;
+    gfx->setTextColor(conf_pending_loc != fc_active_loc ? COL_ACCENT : COL_TITLE);
+    gfx->setCursor(nameX, CONF_LOC_ROW_Y + (CONF_LOC_ROW_H - 8) / 2);
+    gfx->print(lname);
+  }
+
+  // ── Row 5: Firmware / OTA ──
   drawConfFwRow();
 
   // ── Bottom divider + action buttons ──
@@ -966,6 +1006,7 @@ static void confOpen() {
   conf_pending_radius = fc_radius_km;
   conf_pending_hide   = fc_hide_ground;
   conf_pending_miles  = fc_use_miles;
+  conf_pending_loc    = fc_active_loc;
   conf_dirty          = false;
   conf_open           = true;
   drawFooter();
@@ -978,18 +1019,34 @@ static void confClose() {
 }
 
 static void confSave() {
-  bool needsFetch    = (conf_pending_radius > fc_radius_km) ||
-                       (conf_pending_hide   != fc_hide_ground);
-  bool radiusShrank  = (conf_pending_radius < fc_radius_km);
+  bool locationChanged = (conf_pending_loc != fc_active_loc);
+  bool needsFetch      = (conf_pending_radius > fc_radius_km) ||
+                         (conf_pending_hide   != fc_hide_ground) ||
+                         locationChanged;
+  bool radiusShrank    = (!locationChanged && conf_pending_radius < fc_radius_km);
+
   fc_radius_km   = conf_pending_radius;
   fc_hide_ground = conf_pending_hide;
   fc_use_miles   = conf_pending_miles;
+
   Preferences prefs;
   prefs.begin("flightcyd", false);
   prefs.putInt ("radius",   fc_radius_km);
   prefs.putBool("hide_gnd", fc_hide_ground);
   prefs.putBool("miles",    fc_use_miles);
+  if (locationChanged) prefs.putInt("loc_idx", conf_pending_loc);
   prefs.end();
+
+  if (locationChanged) {
+    fc_active_loc = conf_pending_loc;
+    fcApplyLocation(fc_active_loc);
+    setStatsLocation(fc_active_loc);
+    resetStats();
+    loadStats();
+    Serial.printf("[Conf] Switched to location %d: %s\n",
+                  fc_active_loc, fc_locations[fc_active_loc].name);
+  }
+
   conf_dirty = false;
   if (needsFetch) {
     fc_last_attempt = 0;
@@ -1072,7 +1129,8 @@ static void handleTouch(int tx, int ty) {
             conf_pending_radius = presetKm[i];
             conf_dirty = (conf_pending_radius != fc_radius_km ||
                           conf_pending_hide   != fc_hide_ground ||
-                          conf_pending_miles  != fc_use_miles);
+                          conf_pending_miles  != fc_use_miles  ||
+                          conf_pending_loc    != fc_active_loc);
             drawConf();
           }
           return;
@@ -1090,7 +1148,8 @@ static void handleTouch(int tx, int ty) {
         conf_pending_radius = snapToPreset(conf_pending_radius, conf_pending_miles);
         conf_dirty = (conf_pending_radius != fc_radius_km ||
                       conf_pending_hide   != fc_hide_ground ||
-                      conf_pending_miles  != fc_use_miles);
+                      conf_pending_miles  != fc_use_miles  ||
+                      conf_pending_loc    != fc_active_loc);
         drawConf();
       }
       return;
@@ -1102,8 +1161,27 @@ static void handleTouch(int tx, int ty) {
       conf_pending_hide = !conf_pending_hide;
       conf_dirty = (conf_pending_radius != fc_radius_km ||
                     conf_pending_hide   != fc_hide_ground ||
-                    conf_pending_miles  != fc_use_miles);
+                    conf_pending_miles  != fc_use_miles  ||
+                    conf_pending_loc    != fc_active_loc);
       drawConf();
+      return;
+    }
+
+    // Location prev/next
+    if (ty >= CONF_LOC_ROW_Y && ty < CONF_LOC_ROW_Y + CONF_LOC_ROW_H && fc_loc_count > 1) {
+      int newLoc = conf_pending_loc;
+      if (tx >= CONF_LOC_PREV_X && tx < CONF_LOC_PREV_X + CONF_LOC_BTN_W)
+        newLoc = (conf_pending_loc - 1 + fc_loc_count) % fc_loc_count;
+      else if (tx >= CONF_LOC_NEXT_X && tx < CONF_LOC_NEXT_X + CONF_LOC_BTN_W)
+        newLoc = (conf_pending_loc + 1) % fc_loc_count;
+      if (newLoc != conf_pending_loc) {
+        conf_pending_loc = newLoc;
+        conf_dirty = (conf_pending_radius != fc_radius_km ||
+                      conf_pending_hide   != fc_hide_ground ||
+                      conf_pending_miles  != fc_use_miles  ||
+                      conf_pending_loc    != fc_active_loc);
+        drawConf();
+      }
       return;
     }
 
@@ -1197,6 +1275,12 @@ void setup() {
   ts.begin(touchSPI);
   ts.setRotation(1);
 
+  // Mount LittleFS early — needed so portal can read/write locations.json
+  LittleFS.begin(true);
+
+  // Load locations (migrates from NVS lat/lon if no locations.json yet)
+  fcLoadLocations();
+
   bool showPortal = !fc_has_settings;
 
   if (!showPortal) {
@@ -1251,7 +1335,7 @@ void setup() {
     if (getLocalTime(&t, 0)) Serial.printf("[NTP] Synced in %lums\n", millis() - ntpStart);
     else                     Serial.printf("[NTP] Failed after %lums\n", millis() - ntpStart);
   }
-  LittleFS.begin(true);
+  setStatsLocation(fc_active_loc);
   loadStats();
 
   // Draw initial shell so display isn't blank while waiting
@@ -1358,17 +1442,51 @@ void loop() {
     xTaskCreatePinnedToCore(fetchTaskFn, "fetch", 8192, NULL, 1, NULL, 0);
   }
 
-  // Touch
-  if (ts.tirqTouched() && ts.touched()) {
-    TS_Point p = ts.getPoint();
-    unsigned long now = millis();
-    if (now - lastTouchTime > TOUCH_DEBOUNCE) {
-      lastTouchTime = now;
-      int tx = map(p.x, 200, 3900, 0, gfx->width());
-      int ty = map(p.y, 240, 3900, 0, gfx->height());
+  // Touch — shared read for both long-press and regular handlers
+  {
+    bool isTouching = ts.tirqTouched() && ts.touched();
+    int tx = -1, ty = -1;
+    if (isTouching) {
+      TS_Point p = ts.getPoint();
+      tx = map(p.x, 200, 3900, 0, gfx->width());
+      ty = map(p.y, 240, 3900, 0, gfx->height());
       tx = constrain(tx, 0, gfx->width()  - 1);
       ty = constrain(ty, 0, gfx->height() - 1);
-      handleTouch(tx, ty);
+    }
+
+    // Long-press STATS tab for 2s → reset stats for active location
+    if (!isTouching) {
+      stats_lp_armed = false;
+      stats_lp_fired = false;
+    } else {
+      int footerLpY = 240 - FOOTER_H - 16;
+      bool inStats  = !conf_open && ty >= footerLpY && tx >= 95 && tx < 190;
+      if (inStats && !stats_lp_fired) {
+        if (!stats_lp_armed) {
+          stats_lp_armed = true;
+          stats_lp_start = millis();
+        } else if (millis() - stats_lp_start >= 2000) {
+          stats_lp_fired = true;
+          stats_lp_armed = false;
+          setStatsLocation(fc_active_loc);
+          resetStats();
+          loadStats();
+          if (fc_mode == MODE_STATS) { drawStats(); drawFooter(); }
+          showStatus("Stats cleared.");
+          lastTouchTime = millis();
+        }
+      } else if (!inStats) {
+        stats_lp_armed = false;
+      }
+    }
+
+    // Regular debounced touch
+    if (isTouching && !stats_lp_fired && tx >= 0) {
+      unsigned long now = millis();
+      if (now - lastTouchTime > TOUCH_DEBOUNCE) {
+        lastTouchTime = now;
+        handleTouch(tx, ty);
+      }
     }
   }
 

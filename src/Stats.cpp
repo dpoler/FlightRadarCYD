@@ -4,40 +4,48 @@
 #include <Preferences.h>
 #include <LittleFS.h>
 
-#define MAX_SEEN      4500
+#define MAX_SEEN      2000
 #define MAX_HOUR_SEEN 500
 
 // Public state
-int        stats_unique_count    = 0;
-int        stats_fetch_count     = 0;
+int        stats_unique_count     = 0;
+int        stats_fetch_count      = 0;
 int        stats_fetch_fail_count = 0;
-int        stats_peak_count   = 0;
-float      stats_closest_dist = 1e9f;
-StatRecord stats_closest      = {};
-float      stats_highest_alt  = -1e9f;
-StatRecord stats_highest      = {};
-float      stats_fastest_spd  = -1e9f;
-StatRecord stats_fastest      = {};
-float      stats_climb_rate   = -1e9f;
-StatRecord stats_climb        = {};
-float      stats_desc_rate    =  1e9f;
-StatRecord stats_desc         = {};
+int        stats_peak_count    = 0;
+float      stats_closest_dist  = 1e9f;
+StatRecord stats_closest       = {};
+float      stats_highest_alt   = -1e9f;
+StatRecord stats_highest       = {};
+float      stats_fastest_spd   = -1e9f;
+StatRecord stats_fastest       = {};
+float      stats_climb_rate    = -1e9f;
+StatRecord stats_climb         = {};
+float      stats_desc_rate     =  1e9f;
+StatRecord stats_desc          = {};
 uint8_t    stats_hourly_unique[24] = {};
-int        stats_current_hour = -1;
+int        stats_current_hour  = -1;
 bool       stats_fetching_types = false;
-volatile bool stats_type_arrived  = false;
+volatile bool stats_type_arrived = false;
+bool       stats_seen_capped   = false;
 
 // Private state
+static char       stats_ns[10]                     = "stats0";
+static char       stats_seen_file[16]              = "/seen0.bin";
 static char       stats_peak_hhmm[6]               = {};
-static time_t     stats_peak_ts                     = 0;
-static bool       stats_types_pending               = false;
-static char       stats_seen_icao[MAX_SEEN][7]      = {};
-static uint32_t   stats_seen_ts[MAX_SEEN]           = {};
-static int        stats_seen_count                  = 0;
+static time_t     stats_peak_ts                    = 0;
+static bool       stats_types_pending              = false;
+static char       stats_seen_icao[MAX_SEEN][7]     = {};
+static uint32_t   stats_seen_ts[MAX_SEEN]          = {};
+static int        stats_seen_count                 = 0;
 static char       stats_hour_seen_icao[MAX_HOUR_SEEN][7] = {};
-static int        stats_hour_seen_cnt               = 0;
-static time_t     stats_save_ts                     = 0;
-static TaskHandle_t hTypeTask                       = NULL;
+static int        stats_hour_seen_cnt              = 0;
+static time_t     stats_save_ts                    = 0;
+static TaskHandle_t hTypeTask                      = NULL;
+
+void setStatsLocation(int idx) {
+    snprintf(stats_ns,        sizeof(stats_ns),        "stats%d", idx);
+    snprintf(stats_seen_file, sizeof(stats_seen_file), "/seen%d.bin", idx);
+}
 
 static void captureTime(char *hhmm6) {
   struct tm t;
@@ -97,6 +105,7 @@ void expireOldRecords() {
   }
   stats_seen_count   = n;
   stats_unique_count = n;
+  if (stats_seen_count < MAX_SEEN) stats_seen_capped = false;
 }
 
 void resetStats() {
@@ -115,17 +124,17 @@ void resetStats() {
   stats_current_hour  = -1;
   stats_hour_seen_cnt = 0;
   stats_seen_count    = 0;
-  // LittleFS may not be mounted yet (called from portal); set a flag so
-  // loadStats() clears seen.bin after LittleFS.begin()
+  stats_seen_capped   = false;
+  // Deferred seen-file clear: set flag so loadStats() wipes it after LittleFS is ready
   Preferences prefs;
-  prefs.begin("stats", false);
+  prefs.begin(stats_ns, false);
   prefs.putBool("loc_reset", true);
   prefs.end();
 }
 
 void saveStats() {
   Preferences prefs;
-  prefs.begin("stats", false);
+  prefs.begin(stats_ns, false);
   prefs.putInt("ver",       4);
   prefs.putUInt("save_ts",  (uint32_t)time(nullptr));
   prefs.putInt("unique",    stats_unique_count);
@@ -148,7 +157,7 @@ void saveStats() {
     prefs.putBytes("hr_seen", stats_hour_seen_icao, stats_hour_seen_cnt * 7);
   prefs.end();
 
-  File sf = LittleFS.open("/seen.bin", "w");
+  File sf = LittleFS.open(stats_seen_file, "w");
   if (sf) {
     uint16_t cnt = (uint16_t)stats_seen_count;
     sf.write((uint8_t*)&cnt, sizeof(cnt));
@@ -163,19 +172,19 @@ void saveStats() {
 void loadStats() {
   {
     Preferences prefs;
-    prefs.begin("stats", false);
+    prefs.begin(stats_ns, false);
     if (prefs.getBool("loc_reset", false)) {
       prefs.remove("loc_reset");
       prefs.end();
-      LittleFS.remove("/seen.bin");
-      Serial.println("[Stats] Location changed — stats cleared");
+      LittleFS.remove(stats_seen_file);
+      Serial.printf("[Stats] Location reset — %s cleared\n", stats_seen_file);
       return;
     }
     prefs.end();
   }
 
   Preferences prefs;
-  prefs.begin("stats", true);
+  prefs.begin(stats_ns, true);
   if (prefs.getInt("ver", 0) < 4) { prefs.end(); return; }
 
   stats_save_ts        = (time_t)prefs.getUInt("save_ts", 0);
@@ -199,20 +208,8 @@ void loadStats() {
     prefs.getBytes("hr_seen", stats_hour_seen_icao, saved_hr_cnt * 7);
   prefs.end();
 
-  // One-time migration: remove seen arrays from NVS (now stored in LittleFS)
   {
-    Preferences clean;
-    clean.begin("stats", false);
-    if (clean.isKey("seen_cnt")) {
-      clean.remove("seen_cnt");
-      clean.remove("seen");
-      clean.remove("seen_ts");
-    }
-    clean.end();
-  }
-
-  {
-    File sf = LittleFS.open("/seen.bin", "r");
+    File sf = LittleFS.open(stats_seen_file, "r");
     if (sf) {
       uint16_t cnt = 0;
       sf.read((uint8_t*)&cnt, sizeof(cnt));
@@ -231,7 +228,6 @@ void loadStats() {
     int64_t elapsed = (int64_t)now_ts - (int64_t)stats_save_ts;
 
     if (now_ts <= 0) {
-      // NTP not synced yet — preserve chart, defer hour tracking
       stats_current_hour = -1;
     } else if (stats_save_ts <= 0 || elapsed >= 86400) {
       memset(stats_hourly_unique, 0, sizeof(stats_hourly_unique));
@@ -250,7 +246,6 @@ void loadStats() {
         }
         stats_hourly_unique[now_tm.tm_hour] = 0;
       } else {
-        // Same hour — restore dedup buffer so reboots don't recount aircraft
         stats_hour_seen_cnt = saved_hr_cnt;
       }
     }
@@ -258,8 +253,8 @@ void loadStats() {
 
   expireOldRecords();
 
-  Serial.printf("[Stats] Loaded: save_ts=%lu unique=%d\n",
-                (unsigned long)stats_save_ts, stats_unique_count);
+  Serial.printf("[Stats] Loaded ns=%s: save_ts=%lu unique=%d\n",
+                stats_ns, (unsigned long)stats_save_ts, stats_unique_count);
 }
 
 void updateStats(bool fetchOk) {
@@ -288,12 +283,18 @@ void updateStats(bool fetchOk) {
     bool seen = false;
     for (int j = 0; j < stats_seen_count; j++)
       if (strcmp(stats_seen_icao[j], f.icao) == 0) { seen = true; break; }
-    if (!seen && stats_seen_count < MAX_SEEN) {
-      strncpy(stats_seen_icao[stats_seen_count], f.icao, 6);
-      stats_seen_icao[stats_seen_count][6] = '\0';
-      stats_seen_ts[stats_seen_count] = (uint32_t)time(nullptr);
-      stats_seen_count++;
-      stats_unique_count++;
+
+    if (!seen) {
+      if (stats_seen_count < MAX_SEEN) {
+        strncpy(stats_seen_icao[stats_seen_count], f.icao, 6);
+        stats_seen_icao[stats_seen_count][6] = '\0';
+        stats_seen_ts[stats_seen_count] = (uint32_t)time(nullptr);
+        stats_seen_count++;
+        stats_unique_count++;
+      } else {
+        stats_seen_capped = true;
+        stats_unique_count++;
+      }
     }
 
     if (stats_current_hour >= 0) {
@@ -368,8 +369,6 @@ static void typesFetchTaskFn(void *) {
 
 void startTypesFetch() {
   if (hTypeTask || !stats_types_pending) return;
-  // On P4 (pioarduino), loop() runs on core 0 — pin to core 1 to avoid sharing.
-  // On original ESP32, loop() runs on core 1 — pin to core 0.
 #ifdef CONFIG_IDF_TARGET_ESP32P4
   const BaseType_t taskCore = 1;
 #else
