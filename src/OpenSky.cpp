@@ -6,6 +6,7 @@
 FlightData fc_flights[MAX_FLIGHTS];
 int        fc_flight_count  = 0;
 int        fc_total_in_bbox = 0;
+int        fc_hidden_ground = 0;
 
 static char              fc_access_token[2048] = "";
 static unsigned long     fc_token_expiry_ms    = 0;
@@ -217,7 +218,7 @@ static bool sr_expect(StreamReader &r, char expected) {
 //         5=lon 6=lat 7=baro_alt 8=on_ground 9=velocity 10=track 11=vert_rate
 //         12=sensors(array) 13=geo_alt 14=squawk 15=spi 16=pos_src
 // Returns false only on stream/parse error (not on filtered-out aircraft).
-static bool parseOneState(StreamReader &r, float userLat, float userLon, float radiusKm) {
+static bool parseOneState(StreamReader &r, float userLat, float userLon, float radiusKm, bool hideGround) {
   if (!sr_expect(r, '[')) return false;
 
   char tmp[32];
@@ -324,6 +325,9 @@ static bool parseOneState(StreamReader &r, float userLat, float userLon, float r
 
   if (!hasPos) return true;
 
+  // Skip ground aircraft during insert so airborne ones get the limited slots.
+  if (hideGround && f.on_ground) { fc_hidden_ground++; return true; }
+
   float dist = fc_haversine(userLat, userLon, f.lat, f.lon);
   if (dist <= radiusKm) {
     f.dist_km      = dist;
@@ -337,7 +341,7 @@ static bool parseOneState(StreamReader &r, float userLat, float userLon, float r
 }
 
 // Navigate stream to the "states" array and parse every element.
-static bool parseOpenSkyStream(Stream &s, float userLat, float userLon, float radiusKm) {
+static bool parseOpenSkyStream(Stream &s, float userLat, float userLon, float radiusKm, bool hideGround) {
   StreamReader r(s, 25000);
 
   // Consume the opening '{' of the top-level JSON object.
@@ -373,7 +377,7 @@ static bool parseOpenSkyStream(Stream &s, float userLat, float userLon, float ra
     if (c < 0)  return false;   // timeout
     if (c == ']') { r.read(); break; }  // end of states array
 
-    if (!parseOneState(r, userLat, userLon, radiusKm)) return false;
+    if (!parseOneState(r, userLat, userLon, radiusKm, hideGround)) return false;
 
     sr_skipWS(r);
     c = r.peek();
@@ -387,7 +391,7 @@ static bool parseOpenSkyStream(Stream &s, float userLat, float userLon, float ra
 // Public entry point
 // ---------------------------------------------------------------------------
 bool openSkyFetch(float userLat, float userLon, float radiusKm,
-                  const char *clientId, const char *clientSecret) {
+                  const char *clientId, const char *clientSecret, bool hideGround) {
   float degLat = radiusKm / 111.0f;
   float degLon = radiusKm / (111.0f * cosf(userLat * (float)M_PI / 180.0f));
   char url[256];
@@ -409,6 +413,7 @@ bool openSkyFetch(float userLat, float userLon, float radiusKm,
 
   fc_flight_count  = 0;
   fc_total_in_bbox = 0;
+  fc_hidden_ground = 0;
 
   bool ok = false;
   {
@@ -421,7 +426,7 @@ bool openSkyFetch(float userLat, float userLon, float radiusKm,
     int code = https.GET();
     Serial.printf("[OpenSky] HTTP %d in %lums\n", code, millis() - t0);
     if (code == HTTP_CODE_OK) {
-      ok = parseOpenSkyStream(https.getStream(), userLat, userLon, radiusKm);
+      ok = parseOpenSkyStream(https.getStream(), userLat, userLon, radiusKm, hideGround);
       if (!ok) Serial.println("[OpenSky] stream parse error");
     }
     https.end();
@@ -431,8 +436,8 @@ bool openSkyFetch(float userLat, float userLon, float radiusKm,
   if (!ok) return false;
 
   if (fc_total_in_bbox == 0) Serial.println("[OpenSky] No aircraft in bounding box");
-  Serial.printf("[OpenSky] bbox=%d  circle=%d  total=%lums\n",
-                fc_total_in_bbox, fc_flight_count, millis() - t0);
+  Serial.printf("[OpenSky] bbox=%d  circle=%d  gnd_hidden=%d  total=%lums\n",
+                fc_total_in_bbox, fc_flight_count, fc_hidden_ground, millis() - t0);
   Serial.printf("[Heap] post-fetch free=%u min=%u\n", ESP.getFreeHeap(), ESP.getMinFreeHeap());
   return true;
 }

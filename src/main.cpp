@@ -1091,13 +1091,8 @@ static void redraw() {
 static void fetchTaskFn(void *) {
   float uLat = atof(fc_lat);
   float uLon = atof(fc_lon);
-  fc_fetch_ok = openSkyFetch(uLat, uLon, (float)fc_radius_km, fc_client_id, fc_client_secret);
-  if (fc_hide_ground) {
-    int n = 0;
-    for (int i = 0; i < fc_flight_count; i++)
-      if (!fc_flights[i].on_ground) fc_flights[n++] = fc_flights[i];
-    fc_flight_count = n;
-  }
+  fc_fetch_ok = openSkyFetch(uLat, uLon, (float)fc_radius_km,
+                              fc_client_id, fc_client_secret, fc_hide_ground);
   fc_fetch_done = true;
   fc_fetching   = false;
   vTaskDelete(NULL);

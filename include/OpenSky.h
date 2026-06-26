@@ -25,7 +25,9 @@ struct FlightData {
 extern FlightData fc_flights[MAX_FLIGHTS];
 extern int        fc_flight_count;
 extern int        fc_total_in_bbox;
+extern int        fc_hidden_ground;
 
 const char *fc_compass(float b);
 bool openSkyFetch(float userLat, float userLon, float radiusKm,
-                  const char *clientId = "", const char *clientSecret = "");
+                  const char *clientId = "", const char *clientSecret = "",
+                  bool hideGround = false);
