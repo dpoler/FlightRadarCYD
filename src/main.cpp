@@ -130,7 +130,11 @@ static unsigned long lastTouchTime = 0;
 #define MODE_LIST     2
 
 static int  fc_mode         = MODE_RADAR;
-static int  fc_detail_idx   = -1;          // -1 = no detail overlay
+static int  fc_detail_idx   = -1;          // index into fc_flights[], -1 = none
+
+// List filter state — rebuilt on each drawList(); used by touch handler
+static int  list_visible_rows    = 0;
+static int  list_data_idx[10]   = {}; // visible row → fc_flights index (10 = LIST_MAX_ROWS)
 
 // Settings overlay state
 static bool    conf_open             = false;
@@ -365,9 +369,14 @@ static void drawRadar() {
     gfx->print(rlbl);
   }
 
-  // "N" at top of outer ring
+  // North indicator — top-left corner, clear of header and ring
+  gfx->fillTriangle(7, CONTENT_Y + 2,   // tip
+                    3, CONTENT_Y + 9,   // bottom-left
+                   11, CONTENT_Y + 9,   // bottom-right
+                   COL_RING);
   gfx->setTextColor(COL_RING);
-  gfx->setCursor(cx - 3, cy - RADAR_R - 10);
+  gfx->setTextSize(1);
+  gfx->setCursor(14, CONTENT_Y + 2);
   gfx->print("N");
 
   // User position "+"
@@ -756,21 +765,39 @@ static void drawList() {
     gfx->setTextColor(COL_DIM);
     gfx->setCursor(80, CONTENT_Y + 90);
     gfx->print(fc_fetch_ok ? "No aircraft in range" : "Waiting for data...");
+    list_visible_rows = 0;
     return;
   }
 
-  int rows = min(fc_flight_count, LIST_MAX_ROWS);
-  for (int i = 0; i < rows; i++) {
-    drawListRow(i, i, (i == fc_detail_idx));
+  // Apply same category filter as radar
+  float thr_m = 3048.0f + fc_elevation_ft * 0.3048f;
+  int visRow = 0;
+  int totalVisible = 0;
+  for (int i = 0; i < fc_flight_count; i++) {
+    const FlightData &f = fc_flights[i];
+    uint8_t cat;
+    if (f.on_ground)                                   cat = FILTER_GND;
+    else if (!isnan(f.alt_m) && f.alt_m > thr_m)     cat = FILTER_HI;
+    else if (!isnan(f.vert_ms) && f.vert_ms >=  2.0f) cat = FILTER_CLB;
+    else if (!isnan(f.vert_ms) && f.vert_ms <= -2.0f) cat = FILTER_DSC;
+    else                                               cat = FILTER_LO;
+    if (!(fc_filter_mask & cat)) continue;
+    totalVisible++;
+    if (visRow < LIST_MAX_ROWS) {
+      list_data_idx[visRow] = i;
+      drawListRow(visRow, i, (fc_detail_idx == i));
+      visRow++;
+    }
   }
+  list_visible_rows = visRow;
 
-  if (fc_flight_count > LIST_MAX_ROWS) {
+  if (totalVisible > LIST_MAX_ROWS) {
     gfx->setTextColor(COL_DIM);
     gfx->setTextSize(1);
     int ry = CONTENT_Y + 14 + LIST_MAX_ROWS * LIST_ROW_H;
     gfx->setCursor(4, ry);
     char buf[32];
-    snprintf(buf, sizeof(buf), "  + %d more outside view", fc_flight_count - LIST_MAX_ROWS);
+    snprintf(buf, sizeof(buf), "  + %d more outside view", totalVisible - LIST_MAX_ROWS);
     gfx->print(buf);
   }
 }
@@ -1328,8 +1355,9 @@ static void handleTouch(int tx, int ty) {
   // LIST mode: tap a row to show/dismiss detail
   if (fc_mode == MODE_LIST && ty >= CONTENT_Y + 14) {
     int rowIdx = (ty - (CONTENT_Y + 14)) / LIST_ROW_H;
-    if (rowIdx >= 0 && rowIdx < min(fc_flight_count, LIST_MAX_ROWS)) {
-      fc_detail_idx = (fc_detail_idx == rowIdx) ? -1 : rowIdx;
+    if (rowIdx >= 0 && rowIdx < list_visible_rows) {
+      int dataIdx = list_data_idx[rowIdx];
+      fc_detail_idx = (fc_detail_idx == dataIdx) ? -1 : dataIdx;
       drawList();
       drawFooter();
       if (fc_detail_idx >= 0) {
