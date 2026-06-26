@@ -21,7 +21,8 @@ bool fc_use_miles         = false;
 int  fc_elevation_ft      = 0;
 char fc_client_id[80]     = "";
 char fc_client_secret[64] = "";
-bool fc_hide_ground       = false;
+uint8_t fc_filter_mask    = FILTER_ALL;
+bool    fc_show_labels    = true;
 bool fc_invert_display    = false;
 char fc_tz_posix[64]      = "UTC0";
 bool fc_has_settings      = false;
@@ -117,10 +118,17 @@ void fcLoadSettings() {
   String pass = prefs.getString("pass", "");
   String lat  = prefs.getString("lat",  "");
   String lon  = prefs.getString("lon",  "");
-  fc_radius_km    = prefs.getInt ("radius",   150);
-  fc_use_miles    = prefs.getBool("miles",    false);
-  fc_hide_ground     = prefs.getBool("hide_gnd",    false);
-  fc_invert_display  = prefs.getBool("invert_disp", false);
+  fc_radius_km      = prefs.getInt ("radius",     150);
+  fc_use_miles      = prefs.getBool("miles",      false);
+  fc_invert_display = prefs.getBool("invert_disp", false);
+  // Migrate from legacy hide_gnd bool if new filter key is absent
+  if (prefs.isKey("filter")) {
+    fc_filter_mask = prefs.getUChar("filter", FILTER_ALL) & FILTER_ALL;
+  } else {
+    bool oldHide = prefs.getBool("hide_gnd", false);
+    fc_filter_mask = oldHide ? (FILTER_ALL & ~FILTER_GND) : FILTER_ALL;
+  }
+  fc_show_labels = prefs.getBool("show_lbl", true);
   fc_elevation_ft    = prefs.getInt ("elev_ft",     0);
   String client_id  = prefs.getString("client_id",  "");
   String client_sec = prefs.getString("client_sec", "");
@@ -143,7 +151,7 @@ void fcLoadSettings() {
 void fcSaveSettings(const char *ssid, const char *pass,
                     const char *lat, const char *lon, int radius, bool use_miles,
                     const char *client_id, const char *client_sec,
-                    bool hide_ground, int elevation_ft, const char *tz_posix,
+                    int elevation_ft, const char *tz_posix,
                     bool invert_display) {
   Preferences prefs;
   prefs.begin("flightcyd", false);
@@ -153,7 +161,8 @@ void fcSaveSettings(const char *ssid, const char *pass,
   prefs.putString("lon",         lon);
   prefs.putInt   ("radius",      radius);
   prefs.putBool  ("miles",       use_miles);
-  prefs.putBool  ("hide_gnd",    hide_ground);
+  prefs.putUChar ("filter",      fc_filter_mask);  // preserve current
+  prefs.putBool  ("show_lbl",    fc_show_labels);  // preserve current
   prefs.putBool  ("invert_disp", invert_display);
   prefs.putInt   ("elev_ft",     elevation_ft);
   prefs.putString("client_id",   client_id);
@@ -168,12 +177,11 @@ void fcSaveSettings(const char *ssid, const char *pass,
   strncpy(fc_client_id,     client_id,  sizeof(fc_client_id)     - 1);
   strncpy(fc_client_secret, client_sec, sizeof(fc_client_secret) - 1);
   strncpy(fc_tz_posix,      tz_posix,   sizeof(fc_tz_posix)      - 1);
-  fc_radius_km    = radius;
-  fc_use_miles    = use_miles;
-  fc_hide_ground    = hide_ground;
+  fc_radius_km      = radius;
+  fc_use_miles      = use_miles;
   fc_invert_display = invert_display;
   fc_elevation_ft   = elevation_ft;
-  fc_has_settings = true;
+  fc_has_settings   = true;
   setenv("TZ", fc_tz_posix, 1);
   tzset();
 }
@@ -399,7 +407,6 @@ static void fcHandleSave() {
   int  radius         = fc_radius_km;   // managed via on-device settings overlay
   String client_id    = portalServer->hasArg("client_id")     ? portalServer->arg("client_id")     : "";
   String client_sec   = portalServer->hasArg("client_secret") ? portalServer->arg("client_secret") : "";
-  bool hide_ground    = fc_hide_ground; // managed via on-device settings overlay
   bool invert_display = portalServer->hasArg("invert_display");
   String tz_posix   = portalServer->hasArg("tz_posix") ? portalServer->arg("tz_posix") : "UTC0";
   if (tz_posix.length() == 0 || tz_posix.length() >= 64) tz_posix = "UTC0";
@@ -450,7 +457,7 @@ static void fcHandleSave() {
 
   // Save WiFi/radius/etc to NVS (lat/lon/elev saved from location[0])
   fcSaveSettings(ssid.c_str(), pass.c_str(), fc_lat, fc_lon, radius, use_miles,
-                 client_id.c_str(), client_sec.c_str(), hide_ground,
+                 client_id.c_str(), client_sec.c_str(),
                  fc_elevation_ft, tz_posix.c_str(), invert_display);
 
   // Save locations to LittleFS

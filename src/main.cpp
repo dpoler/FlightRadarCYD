@@ -63,40 +63,45 @@ static unsigned long lastTouchTime = 0;
 #define CONF_H         210
 #define CONF_IX        (CONF_X + 8)           // inner left edge (8px padding)
 #define CONF_IW        (CONF_W - 16)          // inner width = 284px
-// Five content rows (Scan Radius / Distance Units / Hide Ground / Location / Firmware)
-#define CONF_ROW_BTN_H 22
-// Row 1 — Scan Radius: 3 × 92px preset buttons
-#define CONF_RAD_BTN_W 92
-#define CONF_RAD_BTN_H CONF_ROW_BTN_H
-#define CONF_RAD_BTN_Y (CONF_Y + 35)         // y=63
-// Row 2 — Distance Units: two 60px buttons [km][mi], centered, 4px gap
-#define CONF_UNI_BTN_W 60
-#define CONF_UNI_BTN_H CONF_ROW_BTN_H
-#define CONF_UNI_BTN_Y (CONF_RAD_BTN_Y + CONF_RAD_BTN_H + 12)  // y=97
-#define CONF_UNI_KM_X  (CONF_IX + (CONF_IW - 124) / 2)         // centred pair
-#define CONF_UNI_MI_X  (CONF_UNI_KM_X + CONF_UNI_BTN_W + 4)
-// Row 3 — Hide Ground: 120px toggle, centered
-#define CONF_HID_BTN_W 120
-#define CONF_HID_BTN_H CONF_ROW_BTN_H
-#define CONF_HID_BTN_X (CONF_IX + (CONF_IW - CONF_HID_BTN_W) / 2)
-#define CONF_HID_BTN_Y (CONF_UNI_BTN_Y + CONF_UNI_BTN_H + 12)  // y=131
-// Row 4 — Location selector: [<] NAME [>] inline
-#define CONF_LOC_ROW_Y (CONF_HID_BTN_Y + CONF_HID_BTN_H + 10)  // y=163
-#define CONF_LOC_ROW_H 18
-#define CONF_LOC_BTN_W 22
+// Six rows: uniform CONF_ROW_H, inline labels, 8px gaps
+#define CONF_ROW_H     18
+#define CONF_ROW_STEP  (CONF_ROW_H + 8)       // 26px between row tops
+#define CONF_ROW1_Y    (CONF_Y + 29)          // y=57, 10px below title bar
+#define CONF_BTN_X0    (CONF_IX + 52)         // button area starts after inline label
+// Row 1 — Scan Radius: 3 preset buttons (3×74 + 2×5 = 232 = button area)
+#define CONF_RAD_BTN_Y  CONF_ROW1_Y
+#define CONF_RAD_BTN_H  CONF_ROW_H
+#define CONF_RAD_BTN_W  74
+// Row 2 — Distance Units: [km] [mi] (100px each, 32px gap)
+#define CONF_UNI_BTN_Y  (CONF_ROW1_Y + CONF_ROW_STEP)
+#define CONF_UNI_BTN_H  CONF_ROW_H
+#define CONF_UNI_BTN_W  100
+#define CONF_UNI_KM_X   CONF_BTN_X0
+#define CONF_UNI_MI_X   (CONF_BTN_X0 + CONF_UNI_BTN_W + 32)
+// Row 3 — Filter: 5 category buttons (5×44 + 4×3 = 232)
+#define CONF_FLT_ROW_Y  (CONF_ROW1_Y + 2*CONF_ROW_STEP)
+#define CONF_FLT_BTN_W  44
+// Row 4 — Labels: single centred toggle
+#define CONF_LBL_ROW_Y  (CONF_ROW1_Y + 3*CONF_ROW_STEP)
+#define CONF_LBL_BTN_W  140
+#define CONF_LBL_BTN_X  (CONF_BTN_X0 + 46)   // centred in 232px button area
+// Row 5 — Location selector: [<] NAME [>] inline
+#define CONF_LOC_ROW_Y  (CONF_ROW1_Y + 4*CONF_ROW_STEP)
+#define CONF_LOC_ROW_H  CONF_ROW_H
+#define CONF_LOC_BTN_W  22
 #define CONF_LOC_PREV_X (CONF_IX + 66)
 #define CONF_LOC_NEXT_X (CONF_IX + CONF_IW - CONF_LOC_BTN_W)
-// Row 5 — Firmware OTA: label + action button on the right
-#define CONF_FW_ROW_Y  (CONF_LOC_ROW_Y + CONF_LOC_ROW_H + 5)   // y=186
-#define CONF_FW_BTN_H  20
-#define CONF_FW_BTN_W  76
-#define CONF_FW_BTN_X  (CONF_IX + CONF_IW - CONF_FW_BTN_W)
+// Row 6 — Firmware OTA
+#define CONF_FW_ROW_Y   (CONF_ROW1_Y + 5*CONF_ROW_STEP)
+#define CONF_FW_BTN_H   CONF_ROW_H
+#define CONF_FW_BTN_W   76
+#define CONF_FW_BTN_X   (CONF_IX + CONF_IW - CONF_FW_BTN_W)
 // Save/Cancel buttons along the bottom
-#define CONF_ACT_BTN_W ((CONF_IW - 4) / 2)   // 140px each, 4px gap
-#define CONF_ACT_BTN_H 22
-#define CONF_ACT_BTN_Y (CONF_Y + CONF_H - CONF_ACT_BTN_H - 6)  // y=210
-#define CONF_CANCEL_X  CONF_IX
-#define CONF_SAVE_X    (CONF_IX + CONF_ACT_BTN_W + 4)
+#define CONF_ACT_BTN_W  ((CONF_IW - 4) / 2)
+#define CONF_ACT_BTN_H  22
+#define CONF_ACT_BTN_Y  (CONF_Y + CONF_H - CONF_ACT_BTN_H - 6)  // y=210
+#define CONF_CANCEL_X   CONF_IX
+#define CONF_SAVE_X     (CONF_IX + CONF_ACT_BTN_W + 4)
 
 // ---------------------------------------------------------------------------
 // Colours
@@ -128,12 +133,18 @@ static int  fc_mode         = MODE_RADAR;
 static int  fc_detail_idx   = -1;          // -1 = no detail overlay
 
 // Settings overlay state
-static bool conf_open           = false;
-static int  conf_pending_radius = 0;
-static bool conf_pending_hide   = false;
-static bool conf_pending_miles  = false;
-static int  conf_pending_loc    = 0;
-static bool conf_dirty          = false;
+static bool    conf_open             = false;
+static int     conf_pending_radius   = 0;
+static uint8_t conf_pending_filter   = FILTER_ALL;
+static bool    conf_pending_labels   = true;
+static bool    conf_pending_miles    = false;
+static int     conf_pending_loc      = 0;
+static bool    conf_dirty            = false;
+
+// Per-category filter tables (order: GND, CLB, DSC, HI, LO)
+static const uint8_t  FILTER_BITS[5]   = { FILTER_GND, FILTER_CLB, FILTER_DSC, FILTER_HI, FILTER_LO };
+static const uint16_t FILTER_COLORS[5] = { 0x39E7,     COL_GREEN,  COL_ACCENT, COL_AC_HIGH, COL_AC_LOW };
+static const char    *FILTER_LABELS[5] = { "GND",      "CLB",      "DSC",      "HI",         "LO" };
 
 // Long-press STATS for reset
 static unsigned long stats_lp_start = 0;
@@ -367,6 +378,17 @@ static void drawRadar() {
   if (fc_client_id[0] != '\0') {
     for (int i = 0; i < fc_flight_count; i++) {
       const FlightData &f = fc_flights[i];
+      // Determine category for filter check
+      {
+        float thr_m = 3048.0f + fc_elevation_ft * 0.3048f;
+        uint8_t cat;
+        if (f.on_ground) cat = FILTER_GND;
+        else if (!isnan(f.alt_m) && f.alt_m > thr_m) cat = FILTER_HI;
+        else if (!isnan(f.vert_ms) && f.vert_ms >= 2.0f)  cat = FILTER_CLB;
+        else if (!isnan(f.vert_ms) && f.vert_ms <= -2.0f) cat = FILTER_DSC;
+        else cat = FILTER_LO;
+        if (!(fc_filter_mask & cat)) continue;
+      }
       TrailEntry *e = nullptr;
       for (int j = 0; j < MAX_FLIGHTS; j++)
         if (strcmp(g_trails[j].icao, f.icao) == 0) { e = &g_trails[j]; break; }
@@ -411,36 +433,44 @@ static void drawRadar() {
   }
 
   // Draw aircraft
-  for (int i = 0; i < fc_flight_count; i++) {
-    const FlightData &f = fc_flights[i];
-    float track_rad = f.track * (float)M_PI / 180.0f;
-    float bng_rad   = f.bearing * (float)M_PI / 180.0f;
+  {
+    float thr_m = 3048.0f + fc_elevation_ft * 0.3048f;
+    for (int i = 0; i < fc_flight_count; i++) {
+      const FlightData &f = fc_flights[i];
 
-    // Screen position
-    int sx = cx + (int)(sinf(bng_rad) * f.dist_km * scale);
-    int sy = cy - (int)(cosf(bng_rad) * f.dist_km * scale);
+      // Category filter
+      uint8_t cat;
+      if (f.on_ground) cat = FILTER_GND;
+      else if (!isnan(f.alt_m) && f.alt_m > thr_m) cat = FILTER_HI;
+      else if (!isnan(f.vert_ms) && f.vert_ms >= 2.0f)  cat = FILTER_CLB;
+      else if (!isnan(f.vert_ms) && f.vert_ms <= -2.0f) cat = FILTER_DSC;
+      else cat = FILTER_LO;
+      if (!(fc_filter_mask & cat)) continue;
 
-    // Clip to content area
-    if (sx < 1 || sx > 318 || sy < CONTENT_Y + 1 || sy > CONTENT_Y + CONTENT_H - 2) continue;
+      float track_rad = f.track * (float)M_PI / 180.0f;
+      float bng_rad   = f.bearing * (float)M_PI / 180.0f;
 
-    uint16_t col = acColor(f);
+      int sx = cx + (int)(sinf(bng_rad) * f.dist_km * scale);
+      int sy = cy - (int)(cosf(bng_rad) * f.dist_km * scale);
 
-    // Dot
-    gfx->fillCircle(sx, sy, 2, col);
+      if (sx < 1 || sx > 318 || sy < CONTENT_Y + 1 || sy > CONTENT_Y + CONTENT_H - 2) continue;
 
-    // Heading line (if airborne and track known)
-    if (!f.on_ground) {
-      int hx = sx + (int)(sinf(track_rad) * 8);
-      int hy = sy - (int)(cosf(track_rad) * 8);
-      gfx->drawLine(sx, sy, hx, hy, col);
-    }
+      uint16_t col = acColor(f);
 
-    // Callsign label — only for closer aircraft (within inner ring) to reduce clutter
-    if (f.dist_km <= fc_radius_km * 0.5f) {
-      gfx->setTextColor(col);
-      gfx->setTextSize(1);
-      gfx->setCursor(sx + 4, sy - 4);
-      gfx->print(f.callsign);
+      gfx->fillCircle(sx, sy, 2, col);
+
+      if (!f.on_ground) {
+        int hx = sx + (int)(sinf(track_rad) * 8);
+        int hy = sy - (int)(cosf(track_rad) * 8);
+        gfx->drawLine(sx, sy, hx, hy, col);
+      }
+
+      if (fc_show_labels && f.dist_km <= fc_radius_km * 0.5f) {
+        gfx->setTextColor(col);
+        gfx->setTextSize(1);
+        gfx->setCursor(sx + 4, sy - 4);
+        gfx->print(f.callsign);
+      }
     }
   }
 
@@ -835,6 +865,21 @@ static void drawConfBtn(int x, int y, int w, int h,
   gfx->print(label);
 }
 
+// Category filter button: colour-coded, bright when shown, dim when hidden.
+static void drawFilterBtn(int x, int y, int idx, bool shown) {
+  uint16_t ac  = FILTER_COLORS[idx];
+  uint16_t border = shown ? ac         : (uint16_t)0x2104;
+  uint16_t text   = shown ? ac         : (uint16_t)0x39E7;
+  uint16_t fill   = shown ? (uint16_t)0x0841 : (uint16_t)0x0000;
+  gfx->fillRect(x, y, CONF_FLT_BTN_W, CONF_ROW_H, fill);
+  gfx->drawRect(x, y, CONF_FLT_BTN_W, CONF_ROW_H, border);
+  int tw = strlen(FILTER_LABELS[idx]) * 6;
+  gfx->setTextColor(text);
+  gfx->setTextSize(1);
+  gfx->setCursor(x + (CONF_FLT_BTN_W - tw) / 2, y + (CONF_ROW_H - 8) / 2);
+  gfx->print(FILTER_LABELS[idx]);
+}
+
 // Repaints only the firmware row — called during OTA progress to avoid full-overlay flicker.
 static void drawConfFwRow() {
   gfx->fillRect(CONF_IX, CONF_FW_ROW_Y, CONF_IW, CONF_FW_BTN_H, 0x0841);
@@ -921,8 +966,9 @@ static void drawConf() {
 
   // ── Row 1: Scan Radius ──
   gfx->setTextColor(RGB565_WHITE);
-  gfx->setCursor(CONF_IX, CONF_RAD_BTN_Y - 10);
-  gfx->print("Scan Radius:");
+  gfx->setTextSize(1);
+  gfx->setCursor(CONF_IX, CONF_RAD_BTN_Y + (CONF_ROW_H - 8) / 2);
+  gfx->print("Radius:");
 
   int presetKm[3];
   char presetLbl[3][8];
@@ -930,38 +976,47 @@ static void drawConf() {
     int miVals[3] = {15, 30, 60};
     for (int i = 0; i < 3; i++) {
       presetKm[i] = (int)(miVals[i] * 1.60934f + 0.5f);
-      snprintf(presetLbl[i], sizeof(presetLbl[i]), "%d mi", miVals[i]);
+      snprintf(presetLbl[i], sizeof(presetLbl[i]), "%dmi", miVals[i]);
     }
   } else {
     int kmVals[3] = {25, 50, 100};
     for (int i = 0; i < 3; i++) {
       presetKm[i] = kmVals[i];
-      snprintf(presetLbl[i], sizeof(presetLbl[i]), "%d km", kmVals[i]);
+      snprintf(presetLbl[i], sizeof(presetLbl[i]), "%dkm", kmVals[i]);
     }
   }
   for (int i = 0; i < 3; i++) {
-    int bx = CONF_IX + i * (CONF_RAD_BTN_W + 4);
+    int bx = CONF_BTN_X0 + i * (CONF_RAD_BTN_W + 5);
     drawConfBtn(bx, CONF_RAD_BTN_Y, CONF_RAD_BTN_W, CONF_RAD_BTN_H,
                 presetLbl[i], conf_pending_radius == presetKm[i]);
   }
 
   // ── Row 2: Distance Units ──
   gfx->setTextColor(RGB565_WHITE);
-  gfx->setCursor(CONF_IX, CONF_UNI_BTN_Y - 10);
-  gfx->print("Distance Units:");
+  gfx->setCursor(CONF_IX, CONF_UNI_BTN_Y + (CONF_ROW_H - 8) / 2);
+  gfx->print("Units:");
   drawConfBtn(CONF_UNI_KM_X, CONF_UNI_BTN_Y, CONF_UNI_BTN_W, CONF_UNI_BTN_H,
               "km", !conf_pending_miles);
   drawConfBtn(CONF_UNI_MI_X, CONF_UNI_BTN_Y, CONF_UNI_BTN_W, CONF_UNI_BTN_H,
               "mi", conf_pending_miles);
 
-  // ── Row 3: Hide Ground ──
+  // ── Row 3: Filter categories ──
   gfx->setTextColor(RGB565_WHITE);
-  gfx->setCursor(CONF_IX, CONF_HID_BTN_Y - 10);
-  gfx->print("Hide aircraft on ground:");
-  drawConfBtn(CONF_HID_BTN_X, CONF_HID_BTN_Y, CONF_HID_BTN_W, CONF_HID_BTN_H,
-              conf_pending_hide ? "ON" : "OFF", conf_pending_hide);
+  gfx->setCursor(CONF_IX, CONF_FLT_ROW_Y + (CONF_ROW_H - 8) / 2);
+  gfx->print("Filter:");
+  for (int i = 0; i < 5; i++) {
+    int bx = CONF_BTN_X0 + i * (CONF_FLT_BTN_W + 3);
+    drawFilterBtn(bx, CONF_FLT_ROW_Y, i, (conf_pending_filter & FILTER_BITS[i]) != 0);
+  }
 
-  // ── Row 4: Location selector ──
+  // ── Row 4: Callsign Labels ──
+  gfx->setTextColor(RGB565_WHITE);
+  gfx->setCursor(CONF_IX, CONF_LBL_ROW_Y + (CONF_ROW_H - 8) / 2);
+  gfx->print("Labels:");
+  drawConfBtn(CONF_LBL_BTN_X, CONF_LBL_ROW_Y, CONF_LBL_BTN_W, CONF_ROW_H,
+              conf_pending_labels ? "ON" : "OFF", conf_pending_labels);
+
+  // ── Row 5: Location selector ──
   gfx->fillRect(CONF_IX, CONF_LOC_ROW_Y, CONF_IW, CONF_LOC_ROW_H, 0x0000);
   gfx->setTextColor(RGB565_WHITE);
   gfx->setCursor(CONF_IX, CONF_LOC_ROW_Y + (CONF_LOC_ROW_H - 8) / 2);
@@ -978,7 +1033,7 @@ static void drawConf() {
     gfx->print(lname);
   }
 
-  // ── Row 5: Firmware / OTA ──
+  // ── Row 6: Firmware / OTA ──
   drawConfFwRow();
 
   // ── Bottom divider + action buttons ──
@@ -1010,7 +1065,8 @@ static int snapToPreset(int radius_km, bool use_miles) {
 
 static void confOpen() {
   conf_pending_radius = fc_radius_km;
-  conf_pending_hide   = fc_hide_ground;
+  conf_pending_filter = fc_filter_mask;
+  conf_pending_labels = fc_show_labels;
   conf_pending_miles  = fc_use_miles;
   conf_pending_loc    = fc_active_loc;
   conf_dirty          = false;
@@ -1026,20 +1082,23 @@ static void confClose() {
 
 static void confSave() {
   bool locationChanged = (conf_pending_loc != fc_active_loc);
+  bool gndChanged      = ((conf_pending_filter ^ fc_filter_mask) & FILTER_GND) != 0;
   bool needsFetch      = (conf_pending_radius > fc_radius_km) ||
-                         (conf_pending_hide   != fc_hide_ground) ||
+                         gndChanged ||
                          locationChanged;
   bool radiusShrank    = (!locationChanged && conf_pending_radius < fc_radius_km);
 
   fc_radius_km   = conf_pending_radius;
-  fc_hide_ground = conf_pending_hide;
+  fc_filter_mask = conf_pending_filter;
+  fc_show_labels = conf_pending_labels;
   fc_use_miles   = conf_pending_miles;
 
   Preferences prefs;
   prefs.begin("flightcyd", false);
-  prefs.putInt ("radius",   fc_radius_km);
-  prefs.putBool("hide_gnd", fc_hide_ground);
-  prefs.putBool("miles",    fc_use_miles);
+  prefs.putInt  ("radius",   fc_radius_km);
+  prefs.putUChar("filter",   fc_filter_mask);
+  prefs.putBool ("show_lbl", fc_show_labels);
+  prefs.putBool ("miles",    fc_use_miles);
   if (locationChanged) prefs.putInt("loc_idx", conf_pending_loc);
   prefs.end();
 
@@ -1092,7 +1151,8 @@ static void fetchTaskFn(void *) {
   float uLat = atof(fc_lat);
   float uLon = atof(fc_lon);
   fc_fetch_ok = openSkyFetch(uLat, uLon, (float)fc_radius_km,
-                              fc_client_id, fc_client_secret, fc_hide_ground);
+                              fc_client_id, fc_client_secret,
+                              !(fc_filter_mask & FILTER_GND));
   fc_fetch_done = true;
   fc_fetching   = false;
   vTaskDelete(NULL);
@@ -1131,13 +1191,14 @@ static void handleTouch(int tx, int ty) {
         for (int i = 0; i < 3; i++) presetKm[i] = kmVals[i];
       }
       for (int i = 0; i < 3; i++) {
-        int bx = CONF_IX + i * (CONF_RAD_BTN_W + 4);
+        int bx = CONF_BTN_X0 + i * (CONF_RAD_BTN_W + 5);
         if (tx >= bx && tx < bx + CONF_RAD_BTN_W) {
           if (conf_pending_radius != presetKm[i]) {
             conf_pending_radius = presetKm[i];
             conf_dirty = (conf_pending_radius != fc_radius_km ||
-                          conf_pending_hide   != fc_hide_ground ||
-                          conf_pending_miles  != fc_use_miles  ||
+                          conf_pending_filter != fc_filter_mask ||
+                          conf_pending_labels != fc_show_labels ||
+                          conf_pending_miles  != fc_use_miles   ||
                           conf_pending_loc    != fc_active_loc);
             drawConf();
           }
@@ -1155,21 +1216,41 @@ static void handleTouch(int tx, int ty) {
         conf_pending_miles  = newMiles;
         conf_pending_radius = snapToPreset(conf_pending_radius, conf_pending_miles);
         conf_dirty = (conf_pending_radius != fc_radius_km ||
-                      conf_pending_hide   != fc_hide_ground ||
-                      conf_pending_miles  != fc_use_miles  ||
+                      conf_pending_filter != fc_filter_mask ||
+                      conf_pending_labels != fc_show_labels ||
+                      conf_pending_miles  != fc_use_miles   ||
                       conf_pending_loc    != fc_active_loc);
         drawConf();
       }
       return;
     }
 
-    // Hide-ground toggle
-    if (tx >= CONF_HID_BTN_X && tx < CONF_HID_BTN_X + CONF_HID_BTN_W &&
-        ty >= CONF_HID_BTN_Y && ty < CONF_HID_BTN_Y + CONF_HID_BTN_H) {
-      conf_pending_hide = !conf_pending_hide;
+    // Filter category buttons
+    if (ty >= CONF_FLT_ROW_Y && ty < CONF_FLT_ROW_Y + CONF_ROW_H) {
+      for (int i = 0; i < 5; i++) {
+        int bx = CONF_BTN_X0 + i * (CONF_FLT_BTN_W + 3);
+        if (tx >= bx && tx < bx + CONF_FLT_BTN_W) {
+          conf_pending_filter ^= FILTER_BITS[i];
+          conf_dirty = (conf_pending_radius != fc_radius_km ||
+                        conf_pending_filter != fc_filter_mask ||
+                        conf_pending_labels != fc_show_labels ||
+                        conf_pending_miles  != fc_use_miles   ||
+                        conf_pending_loc    != fc_active_loc);
+          drawConf();
+          return;
+        }
+      }
+      return;
+    }
+
+    // Labels toggle
+    if (ty >= CONF_LBL_ROW_Y && ty < CONF_LBL_ROW_Y + CONF_ROW_H &&
+        tx >= CONF_LBL_BTN_X && tx < CONF_LBL_BTN_X + CONF_LBL_BTN_W) {
+      conf_pending_labels = !conf_pending_labels;
       conf_dirty = (conf_pending_radius != fc_radius_km ||
-                    conf_pending_hide   != fc_hide_ground ||
-                    conf_pending_miles  != fc_use_miles  ||
+                    conf_pending_filter != fc_filter_mask ||
+                    conf_pending_labels != fc_show_labels ||
+                    conf_pending_miles  != fc_use_miles   ||
                     conf_pending_loc    != fc_active_loc);
       drawConf();
       return;
@@ -1185,8 +1266,9 @@ static void handleTouch(int tx, int ty) {
       if (newLoc != conf_pending_loc) {
         conf_pending_loc = newLoc;
         conf_dirty = (conf_pending_radius != fc_radius_km ||
-                      conf_pending_hide   != fc_hide_ground ||
-                      conf_pending_miles  != fc_use_miles  ||
+                      conf_pending_filter != fc_filter_mask ||
+                      conf_pending_labels != fc_show_labels ||
+                      conf_pending_miles  != fc_use_miles   ||
                       conf_pending_loc    != fc_active_loc);
         drawConf();
       }
