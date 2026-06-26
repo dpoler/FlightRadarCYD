@@ -6,9 +6,9 @@ A live aircraft radar and flight tracker built for the **ESP32 CYD** (Cheap Yell
 
 ## 📸 Screenshots
 
-| RADAR Mode | LIST Mode | DETAIL display | STATS Mode |
-|:---:|:---:|:---:|:---:|
-| ![Radar](RadarDisplay.png) | ![List](ListDisplay.png) | ![Detail](DetailDisplay.png) | ![Stats](StatsDisplay.png) |
+| RADAR Mode | LIST Mode | DETAIL display | STATS Mode | Settings Overlay |
+|:---:|:---:|:---:|:---:|:---:|
+| ![Radar](RadarDisplay.png) | ![List](ListDisplay.png) | ![Detail](DetailDisplay.png) | ![Stats](StatsDisplay.png) | ![Settings](SettingsOverlay.png) |
 
 *Shows real flights detected including DAL2310, EDV4923, and AAL2808*
 
@@ -19,6 +19,8 @@ A live aircraft radar and flight tracker built for the **ESP32 CYD** (Cheap Yell
 FlightRadarCYD connects to your WiFi, fetches live ADS-B state vectors from OpenSky Network, and gives you three display modes to explore the airspace around you. ICAO hex codes are used to pull aircraft types from ADSBDB for the detail screen and stats records.
 
 ### 🟢 RADAR Mode
+
+<!-- SCREENSHOT: Replace RadarDisplay.png — ideally shows green (climbing) or orange (descending) dots to demonstrate the full color palette, not just cyan/yellow/gray -->
 
 - You are at the center crosshair `+`
 - Aircraft appear as colored dots at their true bearing and distance
@@ -39,6 +41,8 @@ FlightRadarCYD connects to your WiFi, fetches live ADS-B state vectors from Open
 **Aircraft trails** — when using an authenticated API key (see below), each aircraft leaves a fading dotted trail of up to 5 previous positions using Catmull-Rom spline interpolation. Trails fade from dim green (oldest) to the aircraft's own color (most recent). Not shown in anonymous mode where 4-minute intervals make trails too sparse to be useful.
 
 ### 📊 STATS Mode
+
+<!-- SCREENSHOT: Replace StatsDisplay.png — should show the updated header with location name ("Stats: LOCNAME (24h)") and the "hold STATS to reset" hint on the right -->
 
 A rolling 24-hour summary per location. Stats and records persist across reboots and automatically expire after 24 hours. If you have multiple locations configured, the header shows which location's stats are displayed.
 
@@ -120,6 +124,8 @@ The **▲** triangle in the header shows fetch status at a glance:
 |:---:|:---:|
 | ![](<Portal 1.png>) | ![](<Portal 2.png>) |
 
+<!-- SCREENSHOTS: Replace Portal 1.png and Portal 2.png with updated portal photos showing the revised layout (scan radius and hide-ground removed; factory reset button at bottom) -->
+
 4. Configure the following:
 
 **Locations** — up to 4 named locations, each with latitude, longitude, and elevation. Elevation is used to distinguish low-level flights from cruise altitude. Google Maps (right-click a pin) gives lat/lon; [mapcoordinates.net](https://mapcoordinates.net) gives elevation.
@@ -143,6 +149,10 @@ The **▲** triangle in the header shows fetch status at a glance:
 ### On-Device Settings Overlay
 
 Tap **\*** in the footer or long-press the BOOT button to open the settings overlay without leaving the current view.
+
+![Settings Overlay](SettingsOverlay.png)
+
+<!-- SCREENSHOT: SettingsOverlay.png — on-device settings overlay showing all 6 rows: Radius buttons, Units buttons, color-coded Filter row (GND/CLB/DSC/HI/LO), Labels toggle, Location selector, Firmware/OTA row -->
 
 | Setting | Options |
 |---|---|
