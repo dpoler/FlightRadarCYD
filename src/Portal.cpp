@@ -505,8 +505,9 @@ static void fcHandleReset() {
   // Remove LittleFS files
   LittleFS.remove("/locations.json");
   for (int i = 0; i < MAX_LOCATIONS; i++) {
-    char path[16]; snprintf(path, sizeof(path), "/seen%d.bin", i);
-    LittleFS.remove(path);
+    char path[20];
+    snprintf(path, sizeof(path), "/seen%d.bin", i);    LittleFS.remove(path);
+    snprintf(path, sizeof(path), "/hr_seen%d.bin", i); LittleFS.remove(path);
   }
   Serial.println("[Portal] Factory reset — all settings and stats cleared");
   portalServer->send(200, "text/html",

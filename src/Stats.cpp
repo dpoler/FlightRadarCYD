@@ -31,6 +31,7 @@ bool       stats_seen_capped   = false;
 // Private state
 static char       stats_ns[10]                     = "stats0";
 static char       stats_seen_file[16]              = "/seen0.bin";
+static char       stats_hrseen_file[20]            = "/hr_seen0.bin";
 static char       stats_peak_hhmm[6]               = {};
 static time_t     stats_peak_ts                    = 0;
 static bool       stats_types_pending              = false;
@@ -43,8 +44,9 @@ static time_t     stats_save_ts                    = 0;
 static TaskHandle_t hTypeTask                      = NULL;
 
 void setStatsLocation(int idx) {
-    snprintf(stats_ns,        sizeof(stats_ns),        "stats%d", idx);
-    snprintf(stats_seen_file, sizeof(stats_seen_file), "/seen%d.bin", idx);
+    snprintf(stats_ns,         sizeof(stats_ns),         "stats%d", idx);
+    snprintf(stats_seen_file,  sizeof(stats_seen_file),  "/seen%d.bin", idx);
+    snprintf(stats_hrseen_file,sizeof(stats_hrseen_file),"/hr_seen%d.bin", idx);
 }
 
 static void captureTime(char *hhmm6) {
@@ -152,10 +154,18 @@ void saveStats() {
   prefs.putFloat("dc_rate", stats_desc_rate);
   prefs.putBytes("dc_rec",  &stats_desc, sizeof(StatRecord));
   prefs.putBytes("hourly_u", stats_hourly_unique, sizeof(stats_hourly_unique));
-  prefs.putInt("hr_seen_cnt", stats_hour_seen_cnt);
-  if (stats_hour_seen_cnt > 0)
-    prefs.putBytes("hr_seen", stats_hour_seen_icao, stats_hour_seen_cnt * 7);
   prefs.end();
+
+  // hr_seen in LittleFS (too large for NVS — up to MAX_HOUR_SEEN*7 bytes)
+  {
+    File hf = LittleFS.open(stats_hrseen_file, "w");
+    if (hf) {
+      uint16_t cnt = (uint16_t)stats_hour_seen_cnt;
+      hf.write((uint8_t*)&cnt, sizeof(cnt));
+      if (cnt > 0) hf.write((uint8_t*)stats_hour_seen_icao, cnt * 7);
+      hf.close();
+    }
+  }
 
   File sf = LittleFS.open(stats_seen_file, "w");
   if (sf) {
@@ -177,6 +187,7 @@ void loadStats() {
       prefs.remove("loc_reset");
       prefs.end();
       LittleFS.remove(stats_seen_file);
+      LittleFS.remove(stats_hrseen_file);
       Serial.printf("[Stats] Location reset — %s cleared\n", stats_seen_file);
       return;
     }
@@ -203,10 +214,23 @@ void loadStats() {
   stats_desc_rate      = prefs.getFloat("dc_rate",  1e9f);
   prefs.getBytes("dc_rec",  &stats_desc, sizeof(StatRecord));
   prefs.getBytes("hourly_u", stats_hourly_unique, sizeof(stats_hourly_unique));
-  int saved_hr_cnt = prefs.getInt("hr_seen_cnt", 0);
-  if (saved_hr_cnt > 0 && saved_hr_cnt <= MAX_HOUR_SEEN)
-    prefs.getBytes("hr_seen", stats_hour_seen_icao, saved_hr_cnt * 7);
+  // Migrate: remove old NVS hr_seen blobs (now stored in LittleFS)
+  if (prefs.isKey("hr_seen"))     prefs.remove("hr_seen");
+  if (prefs.isKey("hr_seen_cnt")) prefs.remove("hr_seen_cnt");
   prefs.end();
+
+  // Load hr_seen from LittleFS
+  {
+    File hf = LittleFS.open(stats_hrseen_file, "r");
+    if (hf) {
+      uint16_t cnt = 0;
+      hf.read((uint8_t*)&cnt, sizeof(cnt));
+      if (cnt > MAX_HOUR_SEEN) cnt = MAX_HOUR_SEEN;
+      stats_hour_seen_cnt = (int)cnt;
+      if (cnt > 0) hf.read((uint8_t*)stats_hour_seen_icao, cnt * 7);
+      hf.close();
+    }
+  }
 
   {
     File sf = LittleFS.open(stats_seen_file, "r");
@@ -245,9 +269,9 @@ void loadStats() {
           h = (h + 1) % 24;
         }
         stats_hourly_unique[now_tm.tm_hour] = 0;
-      } else {
-        stats_hour_seen_cnt = saved_hr_cnt;
+        stats_hour_seen_cnt = 0;
       }
+      // else: stats_hour_seen_cnt already loaded from LittleFS
     }
   }
 
