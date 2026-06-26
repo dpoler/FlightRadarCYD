@@ -276,10 +276,10 @@ static void fcHandleRoot() {
     "' placeholder='Leave blank if open network' maxlength='63'>"
 
     // ── Locations section ──
-    "<label>Favorite Locations (up to 4):</label>"
+    "<label>Favorite Locations (up to 8):</label>"
     "<p style='text-align:left;color:#88aacc;font-size:0.85em;margin:2px 0 8px'>"
     "Name max 8 chars (e.g. HOME, KLAX). First location required. "
-    "Leave Name and Lat blank to remove slots 2-4.</p>"
+    "Leave Name and Lat blank to remove unused slots.</p>"
     "<table style='width:100%;border-collapse:collapse'>"
     "<thead><tr><th>Name</th><th>Latitude</th><th>Longitude</th><th>Elev ft</th></tr></thead>"
     "<tbody>";

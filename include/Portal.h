@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 
-#define MAX_LOCATIONS 4
+#define MAX_LOCATIONS 8
 
 struct LocationEntry {
     char name[9];
