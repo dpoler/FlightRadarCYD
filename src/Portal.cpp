@@ -287,15 +287,34 @@ static void fcHandleRoot() {
     "<p style='text-align:left;color:#88aacc;font-size:0.85em;margin:2px 0 8px'>"
     "Name max 8 chars (e.g. HOME, KLAX). First location required. "
     "Leave Name and Lat blank to remove unused slots.</p>"
-    "<table style='width:100%;border-collapse:collapse'>"
-    "<thead><tr><th>Name</th><th>Latitude</th><th>Longitude</th><th>Elev ft</th></tr></thead>"
+    "<div style='overflow-x:auto'>"
+    "<table style='width:100%;border-collapse:collapse;min-width:480px'>"
+    "<thead><tr><th>Name</th><th>Latitude</th><th>Longitude</th><th>Elev ft</th><th>Timezone</th></tr></thead>"
     "<tbody>";
 
+  // Compact timezone labels for in-table dropdown
+  struct { const char *label; const char *posix; } zones[] = {
+    {"UTC",         "UTC0"},
+    {"Eastern",     "EST5EDT,M3.2.0,M11.1.0"},
+    {"Central",     "CST6CDT,M3.2.0,M11.1.0"},
+    {"Mountain",    "MST7MDT,M3.2.0,M11.1.0"},
+    {"AZ (MST)",    "MST7"},
+    {"Pacific",     "PST8PDT,M3.2.0,M11.1.0"},
+    {"Alaska",      "AKST9AKDT,M3.2.0,M11.1.0"},
+    {"Hawaii",      "HST10"},
+    {"UK/Ireland",  "GMT0BST,M3.5.0/1,M10.5.0"},
+    {"Portugal",    "WET0WEST,M3.5.0/1,M10.5.0"},
+    {"C. Europe",   "CET-1CEST,M3.5.0,M10.5.0/3"},
+    {"E. Europe",   "EET-2EEST,M3.5.0/3,M10.5.0/4"},
+  };
+  int nZones = (int)(sizeof(zones)/sizeof(zones[0]));
+
   for (int i = 0; i < MAX_LOCATIONS; i++) {
-    const char *name = (i < fc_loc_count) ? fc_locations[i].name : "";
-    const char *lat  = (i < fc_loc_count) ? fc_locations[i].lat  : "";
-    const char *lon  = (i < fc_loc_count) ? fc_locations[i].lon  : "";
-    int   elev       = (i < fc_loc_count) ? fc_locations[i].elevation_ft : 0;
+    const char *name  = (i < fc_loc_count) ? fc_locations[i].name : "";
+    const char *lat   = (i < fc_loc_count) ? fc_locations[i].lat  : "";
+    const char *lon   = (i < fc_loc_count) ? fc_locations[i].lon  : "";
+    int   elev        = (i < fc_loc_count) ? fc_locations[i].elevation_ft : 0;
+    const char *locTz = (i < fc_loc_count) ? fc_locations[i].tz_posix : "";
     html += "<tr><td><input name='loc" + String(i) + "_name' maxlength='8' value='";
     html += String(name);
     html += "' style='" + String(CELL_STYLE) + "'></td>";
@@ -307,61 +326,30 @@ static void fcHandleRoot() {
     html += "' placeholder='-77.035' style='" + String(CELL_STYLE) + "'></td>";
     html += "<td><input type='number' name='loc" + String(i) + "_elev' min='-1500' max='20000' value='";
     html += String(elev);
-    html += "' style='" + String(CELL_STYLE) + "'></td></tr>";
-  }
-  html += "</tbody></table>";
-
-  // ── Timezone zone list (shared for global + per-location dropdowns) ──
-  struct { const char *label; const char *posix; } zones[] = {
-    {"UTC",                              "UTC0"},
-    {"US Eastern (EST/EDT)",             "EST5EDT,M3.2.0,M11.1.0"},
-    {"US Central (CST/CDT)",             "CST6CDT,M3.2.0,M11.1.0"},
-    {"US Mountain (MST/MDT)",            "MST7MDT,M3.2.0,M11.1.0"},
-    {"US Mountain, Arizona (MST)",       "MST7"},
-    {"US Pacific (PST/PDT)",             "PST8PDT,M3.2.0,M11.1.0"},
-    {"Alaska (AKST/AKDT)",              "AKST9AKDT,M3.2.0,M11.1.0"},
-    {"Hawaii (HST)",                     "HST10"},
-    {"UK & Ireland (GMT/BST)",           "GMT0BST,M3.5.0/1,M10.5.0"},
-    {"Portugal (WET/WEST)",              "WET0WEST,M3.5.0/1,M10.5.0"},
-    {"Central Europe (CET/CEST)",        "CET-1CEST,M3.5.0,M10.5.0/3"},
-    {"Eastern Europe (EET/EEST)",        "EET-2EEST,M3.5.0/3,M10.5.0/4"},
-  };
-  int nZones = (int)(sizeof(zones)/sizeof(zones[0]));
-
-  auto buildTzSelect = [&](const char *name, const char *currentTz, bool withSameAsGlobal) {
-    html += "<select name='"; html += name; html += "'>";
-    if (withSameAsGlobal)
-      html += "<option value=''>— Same as global timezone —</option>";
-    for (int i = 0; i < nZones; i++) {
-      html += "<option value='"; html += zones[i].posix; html += "'";
-      if (currentTz[0] != '\0' && strcmp(currentTz, zones[i].posix) == 0)
-        html += " selected";
-      html += ">"; html += zones[i].label; html += "</option>";
+    html += "' style='" + String(CELL_STYLE) + "'></td>";
+    html += "<td><select name='loc" + String(i) + "_tz' style='width:100%;background:#001a33;color:#00ccff;border:1px solid #0066aa;border-radius:4px;padding:2px'>";
+    html += "<option value=''>— default —</option>";
+    for (int z = 0; z < nZones; z++) {
+      html += "<option value='"; html += zones[z].posix; html += "'";
+      if (locTz[0] != '\0' && strcmp(locTz, zones[z].posix) == 0) html += " selected";
+      html += ">"; html += zones[z].label; html += "</option>";
     }
-    html += "</select>";
-  };
-
-  // ── Per-location timezone overrides ──
-  html +=
-    "<label>Timezone per Location:</label>"
-    "<p style='text-align:left;color:#88aacc;font-size:0.85em;margin:2px 0 8px'>"
-    "Set a timezone for each location. Leave \"Same as global\" to use the default below.</p>";
-  for (int i = 0; i < MAX_LOCATIONS; i++) {
-    const char *name  = (i < fc_loc_count && fc_locations[i].name[0]) ? fc_locations[i].name : nullptr;
-    const char *locTz = (i < fc_loc_count) ? fc_locations[i].tz_posix : "";
-    html += "<label style='font-weight:normal;color:#ccddff;margin:4px 0 2px;display:block'>Location ";
-    html += String(i + 1);
-    if (name) { html += " ("; html += name; html += ")"; }
-    html += ":</label>";
-    buildTzSelect(("loc" + String(i) + "_tz").c_str(), locTz, true);
+    html += "</select></td></tr>";
   }
+  html += "</tbody></table></div>";
 
   // ── Global / default timezone ──
   html +=
     "<label>Default Timezone:</label>"
     "<p style='text-align:left;color:#88aacc;font-size:0.85em;margin:2px 0 8px'>"
-    "Used for locations with no per-location override, and for the stats daily reset.</p>";
-  buildTzSelect("tz_posix", fc_tz_posix, false);
+    "Used for locations set to \"&#8212; default &#8212;\" above, and for the stats daily reset.</p>"
+    "<select name='tz_posix'>";
+  for (int i = 0; i < nZones; i++) {
+    html += "<option value='"; html += zones[i].posix; html += "'";
+    if (strcmp(fc_tz_posix, zones[i].posix) == 0) html += " selected";
+    html += ">"; html += zones[i].label; html += " &mdash; "; html += zones[i].posix; html += "</option>";
+  }
+  html += "</select>";
   html +=
     "<label>Distance Units:</label>"
     "<p style='text-align:left;color:#88aacc;font-size:0.85em;margin:2px 0 8px'>"
@@ -421,8 +409,7 @@ static void fcHandleRoot() {
   }
   html +=
     "<hr>"
-    "<form method='post' action='/reset'"
-    " onsubmit=\"return confirm('This will erase ALL settings and stats. The device will restart and need to be reconfigured. Are you sure?')\">"
+    "<form method='post' action='/reset'>"
     "<button type='submit'"
     " style='width:100%;padding:12px;background:#1a0000;color:#ff5555;"
     "border:2px solid #ff3333;border-radius:8px;font-size:1em;cursor:pointer;'>"
@@ -528,6 +515,28 @@ static void fcHandleSave() {
 }
 
 static void fcHandleReset() {
+  // Show server-side confirmation page — no JS required
+  portalServer->send(200, "text/html",
+    "<html><head><meta charset='UTF-8'>"
+    "<style>body{background:#000d1a;color:#00ccff;font-family:Arial;"
+    "text-align:center;padding:40px;}h2{color:#ff9955;}p{color:#88aacc;}"
+    "a{color:#00ccff;}</style>"
+    "</head><body>"
+    "<h2>&#9888; Confirm Factory Reset</h2>"
+    "<p>This will erase <b style='color:#ff5555'>ALL settings and stats</b>.<br>"
+    "The device will restart and need to be reconfigured.</p>"
+    "<form method='post' action='/do_reset'>"
+    "<button type='submit'"
+    " style='width:100%;padding:14px;background:#1a0000;color:#ff5555;"
+    "border:2px solid #ff3333;border-radius:8px;font-size:1.1em;cursor:pointer;margin-bottom:16px'>"
+    "&#9889; Yes, Erase Everything"
+    "</button>"
+    "</form>"
+    "<a href='/'>&#8592; Cancel &mdash; Go Back</a>"
+    "</body></html>");
+}
+
+static void fcHandleDoReset() {
   // Clear main settings namespace
   { Preferences p; p.begin("flightcyd", false); p.clear(); p.end(); }
   // Clear per-location stats namespaces
@@ -550,7 +559,7 @@ static void fcHandleReset() {
     "</head><body>"
     "<h2>&#9889; Factory Reset Complete</h2>"
     "<p>All settings and stats have been cleared.</p>"
-    "<p>Device is restarting — reconnect to <b>FlightRadarCYD_Setup</b> to reconfigure.</p>"
+    "<p>Device is restarting &mdash; reconnect to <b>FlightRadarCYD_Setup</b> to reconfigure.</p>"
     "</body></html>");
   delay(2000);
   ESP.restart();
@@ -583,6 +592,7 @@ void fcInitPortal() {
   portalServer->on("/save",     HTTP_POST, fcHandleSave);
   portalServer->on("/nochange", HTTP_POST, fcHandleNoChange);
   portalServer->on("/reset",    HTTP_POST, fcHandleReset);
+  portalServer->on("/do_reset", HTTP_POST, fcHandleDoReset);
   portalServer->onNotFound(fcHandleRoot);
   portalServer->begin();
   portalDone = false;
