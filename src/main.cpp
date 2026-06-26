@@ -156,6 +156,7 @@ static unsigned long fc_last_fetch   = 0;  // last successful fetch (drives "upd
 static unsigned long fc_last_attempt = 0;  // last fetch attempt, success or failure (throttles retries)
 static bool fc_fetch_ok       = false;
 static bool fc_wifi_connected = true;   // tracks transitions for logging/redraw
+static bool fc_ntp_synced     = false;  // true once clock is valid
 static volatile bool fc_fetching   = false;
 static volatile bool fc_fetch_done = false;
 
@@ -1422,8 +1423,8 @@ void setup() {
     int tries = 0;
     unsigned long ntpStart = millis();
     while (!getLocalTime(&t, 0) && tries++ < 20) delay(500);  // up to 10s for NTP
-    if (getLocalTime(&t, 0)) Serial.printf("[NTP] Synced in %lums\n", millis() - ntpStart);
-    else                     Serial.printf("[NTP] Failed after %lums\n", millis() - ntpStart);
+    if (getLocalTime(&t, 0)) { Serial.printf("[NTP] Synced in %lums\n", millis() - ntpStart); fc_ntp_synced = true; }
+    else                       Serial.printf("[NTP] Failed after %lums — will retry\n", millis() - ntpStart);
   }
   setStatsLocation(fc_active_loc);
   loadStats();
@@ -1487,12 +1488,42 @@ void loop() {
     }
   }
 
+  // Deferred NTP sync detection (fires once if boot sync failed but clock later became valid)
+  if (!fc_ntp_synced && time(nullptr) > 1700000000UL) {
+    fc_ntp_synced = true;
+    struct tm t2; time_t now2 = time(nullptr); gmtime_r(&now2, &t2);
+    Serial.printf("[NTP] Clock synced (deferred): %04d-%02d-%02d %02d:%02dZ\n",
+                  t2.tm_year + 1900, t2.tm_mon + 1, t2.tm_mday, t2.tm_hour, t2.tm_min);
+  }
+
   // Post-fetch: runs on core 1 (display-safe) — must check before starting a new fetch
   if (fc_fetch_done) {
     fc_fetch_done = false;
     updateStats(fc_fetch_ok);
     fc_last_attempt = millis();
-    if (fc_fetch_ok) fc_last_fetch = millis();
+    if (fc_fetch_ok) {
+      fc_last_fetch = millis();
+      // Category breakdown of what was fetched and what the display filter shows
+      int cnt[5] = {};
+      float thr_m = 3048.0f + fc_elevation_ft * 0.3048f;
+      for (int i = 0; i < fc_flight_count; i++) {
+        const FlightData &f = fc_flights[i];
+        uint8_t cat;
+        if (f.on_ground)                                   cat = FILTER_GND;
+        else if (!isnan(f.alt_m) && f.alt_m > thr_m)     cat = FILTER_HI;
+        else if (!isnan(f.vert_ms) && f.vert_ms >=  2.0f) cat = FILTER_CLB;
+        else if (!isnan(f.vert_ms) && f.vert_ms <= -2.0f) cat = FILTER_DSC;
+        else                                               cat = FILTER_LO;
+        for (int j = 0; j < 5; j++)
+          if (FILTER_BITS[j] == cat) { cnt[j]++; break; }
+      }
+      int shown = 0;
+      for (int j = 0; j < 5; j++)
+        if (fc_filter_mask & FILTER_BITS[j]) shown += cnt[j];
+      Serial.printf("[Radar] shown=%d  fetched=%d  gnd_skip=%d — gnd=%d clb=%d dsc=%d hi=%d lo=%d\n",
+                    shown, fc_flight_count, fc_hidden_ground,
+                    cnt[0], cnt[1], cnt[2], cnt[3], cnt[4]);
+    }
     fc_detail_idx = -1;
     redraw();
     if (fc_fetch_ok && fc_client_id[0] != '\0') updateTrails();

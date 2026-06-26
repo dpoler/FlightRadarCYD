@@ -436,7 +436,7 @@ bool openSkyFetch(float userLat, float userLon, float radiusKm,
   if (!ok) return false;
 
   if (fc_total_in_bbox == 0) Serial.println("[OpenSky] No aircraft in bounding box");
-  Serial.printf("[OpenSky] bbox=%d  circle=%d  gnd_hidden=%d  total=%lums\n",
+  Serial.printf("[OpenSky] bbox=%d  circle=%d  gnd_skip=%d  total=%lums\n",
                 fc_total_in_bbox, fc_flight_count, fc_hidden_ground, millis() - t0);
   Serial.printf("[Heap] post-fetch free=%u min=%u\n", ESP.getFreeHeap(), ESP.getMinFreeHeap());
   return true;

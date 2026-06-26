@@ -35,14 +35,20 @@ static void checkTask(void *) {
                     ota_latest_tag[sizeof(ota_latest_tag) - 1] = '\0';
                     ota_status = (strcmp(ota_latest_tag, FIRMWARE_VERSION_STR) == 0)
                                  ? OTA_UP_TO_DATE : OTA_AVAILABLE;
+                    Serial.printf("[OTA] %s (latest=%s running=%s)\n",
+                                  ota_status == OTA_UP_TO_DATE ? "Up to date" : "Update available",
+                                  ota_latest_tag, FIRMWARE_VERSION_STR);
                 } else {
                     ota_status = OTA_ERROR;
+                    Serial.println("[OTA] Check failed — no tag_name in response");
                 }
             } else {
                 ota_status = OTA_ERROR;
+                Serial.println("[OTA] Check failed — JSON parse error");
             }
         } else {
             ota_status = OTA_ERROR;
+            Serial.printf("[OTA] Check failed — HTTP %d\n", code);
         }
         http.end();
     }  // WiFiClientSecure and HTTPClient destroyed here — mbedTLS heap released
@@ -72,6 +78,7 @@ static void updateTask(void *) {
         http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
         http.setTimeout(30000);
 
+        Serial.printf("[OTA] Downloading %s...\n", url);
         int code = http.GET();
         if (code == 200) {
             int contentLen = http.getSize();
@@ -80,6 +87,7 @@ static void updateTask(void *) {
             if (Update.begin(contentLen > 0 ? contentLen : UPDATE_SIZE_UNKNOWN)) {
                 uint8_t buf[512];
                 int written = 0;
+                int lastLogPct = -1;
                 unsigned long idleStart = millis();
 
                 while (http.connected() && (contentLen < 0 || written < contentLen)) {
@@ -89,7 +97,14 @@ static void updateTask(void *) {
                         int r = stream.readBytes(buf, min(avail, sizeof(buf)));
                         if (Update.write(buf, r) != r) break;
                         written += r;
-                        if (contentLen > 0) ota_progress = written * 100 / contentLen;
+                        if (contentLen > 0) {
+                            ota_progress = written * 100 / contentLen;
+                            int logPct = (ota_progress / 25) * 25;
+                            if (logPct > lastLogPct) {
+                                lastLogPct = logPct;
+                                Serial.printf("[OTA] %d%%\n", logPct);
+                            }
+                        }
                     } else {
                         if (millis() - idleStart > 10000) break;
                         delay(1);
@@ -98,11 +113,14 @@ static void updateTask(void *) {
 
                 ota_status = (Update.end(true) && written == contentLen)
                              ? OTA_DONE : OTA_ERROR;
+                Serial.printf("[OTA] %s\n", ota_status == OTA_DONE ? "Complete — restarting" : "FAILED");
             } else {
                 ota_status = OTA_ERROR;
+                Serial.println("[OTA] Update.begin() failed");
             }
         } else {
             ota_status = OTA_ERROR;
+            Serial.printf("[OTA] Download failed — HTTP %d\n", code);
         }
         http.end();
     }  // WiFiClientSecure and HTTPClient destroyed here
