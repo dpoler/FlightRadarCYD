@@ -143,7 +143,7 @@ static bool    conf_dirty            = false;
 
 // Per-category filter tables (order: GND, CLB, DSC, HI, LO)
 static const uint8_t  FILTER_BITS[5]   = { FILTER_GND, FILTER_CLB, FILTER_DSC, FILTER_HI, FILTER_LO };
-static const uint16_t FILTER_COLORS[5] = { 0x39E7,     COL_GREEN,  COL_ACCENT, COL_AC_HIGH, COL_AC_LOW };
+static const uint16_t FILTER_COLORS[5] = { 0xC618,     COL_GREEN,  COL_ACCENT, COL_AC_HIGH, COL_AC_LOW };
 static const char    *FILTER_LABELS[5] = { "GND",      "CLB",      "DSC",      "HI",         "LO" };
 
 // Long-press STATS for reset
@@ -869,7 +869,7 @@ static void drawConfBtn(int x, int y, int w, int h,
 static void drawFilterBtn(int x, int y, int idx, bool shown) {
   uint16_t ac  = FILTER_COLORS[idx];
   uint16_t border = shown ? ac         : (uint16_t)0x2104;
-  uint16_t text   = shown ? ac         : (uint16_t)0x39E7;
+  uint16_t text   = shown ? ac         : (uint16_t)0x2104;
   uint16_t fill   = shown ? (uint16_t)0x0841 : (uint16_t)0x0000;
   gfx->fillRect(x, y, CONF_FLT_BTN_W, CONF_ROW_H, fill);
   gfx->drawRect(x, y, CONF_FLT_BTN_W, CONF_ROW_H, border);
