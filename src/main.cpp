@@ -1506,6 +1506,14 @@ void loop() {
       drawConfFwRow();
     }
   }
+  // Redraw firmware row once when OTA status changes (catches the CHECKING→UP_TO_DATE transition)
+  {
+    static OtaStatus prevOtaStatus = OTA_IDLE;
+    if (ota_status != prevOtaStatus) {
+      prevOtaStatus = ota_status;
+      if (conf_open) drawConfFwRow();
+    }
+  }
 
   // Deferred NTP sync detection (fires once if boot sync failed but clock later became valid)
   if (!fc_ntp_synced && time(nullptr) > 1700000000UL) {
