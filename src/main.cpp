@@ -1619,8 +1619,10 @@ void loop() {
     startTypesFetch();
     if (stats_type_arrived) {
       stats_type_arrived = false;
-      drawStats();
-      drawFooter();
+      if (!conf_open) {
+        drawStats();
+        drawFooter();
+      }
     }
   }
 
