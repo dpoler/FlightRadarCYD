@@ -42,10 +42,14 @@ void fcApplyLocation(int idx) {
   strncpy(fc_lat, fc_locations[idx].lat,  sizeof(fc_lat)  - 1); fc_lat[sizeof(fc_lat)-1]  = '\0';
   strncpy(fc_lon, fc_locations[idx].lon,  sizeof(fc_lon)  - 1); fc_lon[sizeof(fc_lon)-1]  = '\0';
   fc_elevation_ft = fc_locations[idx].elevation_ft;
+  const char *tz = (fc_locations[idx].tz_posix[0] != '\0')
+                   ? fc_locations[idx].tz_posix : fc_tz_posix;
+  setenv("TZ", tz, 1);
+  tzset();
 }
 
 void fcSaveLocations() {
-  DynamicJsonDocument doc(512);
+  DynamicJsonDocument doc(2048);
   JsonArray arr = doc.to<JsonArray>();
   for (int i = 0; i < fc_loc_count; i++) {
     JsonObject obj = arr.createNestedObject();
@@ -53,6 +57,8 @@ void fcSaveLocations() {
     obj["lat"]  = fc_locations[i].lat;
     obj["lon"]  = fc_locations[i].lon;
     obj["elev"] = fc_locations[i].elevation_ft;
+    if (fc_locations[i].tz_posix[0] != '\0')
+      obj["tz"] = fc_locations[i].tz_posix;
   }
   File f = LittleFS.open("/locations.json", "w");
   if (f) { serializeJson(doc, f); f.close(); }
@@ -75,7 +81,7 @@ void fcLoadLocations() {
   // Try loading locations.json from LittleFS
   File f = LittleFS.open("/locations.json", "r");
   if (f) {
-    DynamicJsonDocument doc(512);
+    DynamicJsonDocument doc(2048);
     DeserializationError err = deserializeJson(doc, f);
     f.close();
     if (!err && doc.is<JsonArray>()) {
@@ -84,10 +90,11 @@ void fcLoadLocations() {
       for (JsonObject obj : arr) {
         if (fc_loc_count >= MAX_LOCATIONS) break;
         LocationEntry &e = fc_locations[fc_loc_count++];
-        const char *n  = obj["name"]; strlcpy(e.name, n  ? n  : "",    sizeof(e.name));
-        const char *la = obj["lat"];  strlcpy(e.lat,  la ? la : "",    sizeof(e.lat));
-        const char *lo = obj["lon"];  strlcpy(e.lon,  lo ? lo : "",    sizeof(e.lon));
+        const char *n  = obj["name"]; strlcpy(e.name, n  ? n  : "", sizeof(e.name));
+        const char *la = obj["lat"];  strlcpy(e.lat,  la ? la : "", sizeof(e.lat));
+        const char *lo = obj["lon"];  strlcpy(e.lon,  lo ? lo : "", sizeof(e.lon));
         e.elevation_ft = obj["elev"] | 0;
+        const char *tz = obj["tz"];   strlcpy(e.tz_posix, tz ? tz : "", sizeof(e.tz_posix));
       }
     }
   }
@@ -304,38 +311,57 @@ static void fcHandleRoot() {
   }
   html += "</tbody></table>";
 
-  // ── Time zone ──
-  html +=
-    "<label>Time Zone:</label>"
-    "<p style='text-align:left;color:#88aacc;font-size:0.85em;margin:2px 0 8px'>"
-    "Used for the stats screen daily reset (midnight in your local time).</p>";
-  {
-    struct { const char *label; const char *posix; } zones[] = {
-      {"UTC",                              "UTC0"},
-      {"US Eastern (EST/EDT)",             "EST5EDT,M3.2.0,M11.1.0"},
-      {"US Central (CST/CDT)",             "CST6CDT,M3.2.0,M11.1.0"},
-      {"US Mountain (MST/MDT)",            "MST7MDT,M3.2.0,M11.1.0"},
-      {"US Mountain, Arizona (MST)",       "MST7"},
-      {"US Pacific (PST/PDT)",             "PST8PDT,M3.2.0,M11.1.0"},
-      {"Alaska (AKST/AKDT)",              "AKST9AKDT,M3.2.0,M11.1.0"},
-      {"Hawaii (HST)",                     "HST10"},
-      {"UK & Ireland (GMT/BST)",           "GMT0BST,M3.5.0/1,M10.5.0"},
-      {"Portugal (WET/WEST)",              "WET0WEST,M3.5.0/1,M10.5.0"},
-      {"Central Europe (CET/CEST)",        "CET-1CEST,M3.5.0,M10.5.0/3"},
-      {"Eastern Europe (EET/EEST)",        "EET-2EEST,M3.5.0/3,M10.5.0/4"},
-    };
-    html += "<select name='tz_posix'>";
-    for (int i = 0; i < (int)(sizeof(zones)/sizeof(zones[0])); i++) {
-      html += "<option value='";
-      html += zones[i].posix;
-      html += "'";
-      if (strcmp(fc_tz_posix, zones[i].posix) == 0) html += " selected";
-      html += ">";
-      html += zones[i].label;
-      html += "</option>";
+  // ── Timezone zone list (shared for global + per-location dropdowns) ──
+  struct { const char *label; const char *posix; } zones[] = {
+    {"UTC",                              "UTC0"},
+    {"US Eastern (EST/EDT)",             "EST5EDT,M3.2.0,M11.1.0"},
+    {"US Central (CST/CDT)",             "CST6CDT,M3.2.0,M11.1.0"},
+    {"US Mountain (MST/MDT)",            "MST7MDT,M3.2.0,M11.1.0"},
+    {"US Mountain, Arizona (MST)",       "MST7"},
+    {"US Pacific (PST/PDT)",             "PST8PDT,M3.2.0,M11.1.0"},
+    {"Alaska (AKST/AKDT)",              "AKST9AKDT,M3.2.0,M11.1.0"},
+    {"Hawaii (HST)",                     "HST10"},
+    {"UK & Ireland (GMT/BST)",           "GMT0BST,M3.5.0/1,M10.5.0"},
+    {"Portugal (WET/WEST)",              "WET0WEST,M3.5.0/1,M10.5.0"},
+    {"Central Europe (CET/CEST)",        "CET-1CEST,M3.5.0,M10.5.0/3"},
+    {"Eastern Europe (EET/EEST)",        "EET-2EEST,M3.5.0/3,M10.5.0/4"},
+  };
+  int nZones = (int)(sizeof(zones)/sizeof(zones[0]));
+
+  auto buildTzSelect = [&](const char *name, const char *currentTz, bool withSameAsGlobal) {
+    html += "<select name='"; html += name; html += "'>";
+    if (withSameAsGlobal)
+      html += "<option value=''>— Same as global timezone —</option>";
+    for (int i = 0; i < nZones; i++) {
+      html += "<option value='"; html += zones[i].posix; html += "'";
+      if (currentTz[0] != '\0' && strcmp(currentTz, zones[i].posix) == 0)
+        html += " selected";
+      html += ">"; html += zones[i].label; html += "</option>";
     }
     html += "</select>";
+  };
+
+  // ── Per-location timezone overrides ──
+  html +=
+    "<label>Timezone per Location:</label>"
+    "<p style='text-align:left;color:#88aacc;font-size:0.85em;margin:2px 0 8px'>"
+    "Set a timezone for each location. Leave \"Same as global\" to use the default below.</p>";
+  for (int i = 0; i < MAX_LOCATIONS; i++) {
+    const char *name  = (i < fc_loc_count && fc_locations[i].name[0]) ? fc_locations[i].name : nullptr;
+    const char *locTz = (i < fc_loc_count) ? fc_locations[i].tz_posix : "";
+    html += "<label style='font-weight:normal;color:#ccddff;margin:4px 0 2px;display:block'>Location ";
+    html += String(i + 1);
+    if (name) { html += " ("; html += name; html += ")"; }
+    html += ":</label>";
+    buildTzSelect(("loc" + String(i) + "_tz").c_str(), locTz, true);
   }
+
+  // ── Global / default timezone ──
+  html +=
+    "<label>Default Timezone:</label>"
+    "<p style='text-align:left;color:#88aacc;font-size:0.85em;margin:2px 0 8px'>"
+    "Used for locations with no per-location override, and for the stats daily reset.</p>";
+  buildTzSelect("tz_posix", fc_tz_posix, false);
   html +=
     "<label>Distance Units:</label>"
     "<p style='text-align:left;color:#88aacc;font-size:0.85em;margin:2px 0 8px'>"
@@ -447,6 +473,13 @@ static void fcHandleSave() {
     strncpy(newLoc[newLocCount].lat,  lat.c_str(),  15); newLoc[newLocCount].lat[15] = '\0';
     strncpy(newLoc[newLocCount].lon,  lon.c_str(),  15); newLoc[newLocCount].lon[15] = '\0';
     newLoc[newLocCount].elevation_ft = elev;
+    {
+      String locTz = portalServer->arg("loc" + String(i) + "_tz"); locTz.trim();
+      if (locTz.length() > 0 && locTz.length() < 32)
+        strncpy(newLoc[newLocCount].tz_posix, locTz.c_str(), 31);
+      else
+        newLoc[newLocCount].tz_posix[0] = '\0';
+    }
     newLocCount++;
   }
   if (newLocCount == 0) newLocCount = 1;

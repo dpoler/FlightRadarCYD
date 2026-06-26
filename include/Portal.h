@@ -8,6 +8,7 @@ struct LocationEntry {
     char lat[16];
     char lon[16];
     int  elevation_ft;
+    char tz_posix[32];
 };
 
 extern char          fc_wifi_ssid[64];

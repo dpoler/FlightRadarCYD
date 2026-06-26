@@ -369,15 +369,6 @@ static void drawRadar() {
     gfx->print(rlbl);
   }
 
-  // North indicator — top-left corner, clear of header and ring
-  gfx->fillTriangle(7, CONTENT_Y + 2,   // tip
-                    3, CONTENT_Y + 9,   // bottom-left
-                   11, CONTENT_Y + 9,   // bottom-right
-                   COL_RING);
-  gfx->setTextColor(COL_RING);
-  gfx->setTextSize(1);
-  gfx->setCursor(14, CONTENT_Y + 2);
-  gfx->print("N");
 
   // User position "+"
   gfx->setTextColor(COL_USER);

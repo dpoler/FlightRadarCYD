@@ -4,7 +4,7 @@
 #include <Preferences.h>
 #include <LittleFS.h>
 
-#define MAX_SEEN      4500
+#define MAX_SEEN      4400
 #define MAX_HOUR_SEEN 500
 
 // Public state
