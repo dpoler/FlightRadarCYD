@@ -394,6 +394,15 @@ static void fcHandleRoot() {
       "</form>";
   }
   html +=
+    "<hr>"
+    "<form method='post' action='/reset'"
+    " onsubmit=\"return confirm('This will erase ALL settings and stats. The device will restart and need to be reconfigured. Are you sure?')\">"
+    "<button type='submit'"
+    " style='width:100%;padding:12px;background:#1a0000;color:#ff5555;"
+    "border:2px solid #ff3333;border-radius:8px;font-size:1em;cursor:pointer;'>"
+    "&#9888; Factory Reset &mdash; Erase All Settings &amp; Stats"
+    "</button>"
+    "</form>"
     "<p class='note'>&#9888; ESP32 supports 2.4 GHz WiFi only. "
     "OpenSky: anonymous 400 req/day (4-min refresh) or account 4,000 req/day (30-sec refresh).</p>"
     "</body></html>";
@@ -485,6 +494,34 @@ static void fcHandleSave() {
   portalDone = true;
 }
 
+static void fcHandleReset() {
+  // Clear main settings namespace
+  { Preferences p; p.begin("flightcyd", false); p.clear(); p.end(); }
+  // Clear per-location stats namespaces
+  for (int i = 0; i < MAX_LOCATIONS; i++) {
+    char ns[10]; snprintf(ns, sizeof(ns), "stats%d", i);
+    Preferences p; p.begin(ns, false); p.clear(); p.end();
+  }
+  // Remove LittleFS files
+  LittleFS.remove("/locations.json");
+  for (int i = 0; i < MAX_LOCATIONS; i++) {
+    char path[16]; snprintf(path, sizeof(path), "/seen%d.bin", i);
+    LittleFS.remove(path);
+  }
+  Serial.println("[Portal] Factory reset — all settings and stats cleared");
+  portalServer->send(200, "text/html",
+    "<html><head><meta charset='UTF-8'>"
+    "<style>body{background:#000d1a;color:#00ccff;font-family:Arial;"
+    "text-align:center;padding:40px;}h2{color:#ff5555;}p{color:#88aacc;}</style>"
+    "</head><body>"
+    "<h2>&#9889; Factory Reset Complete</h2>"
+    "<p>All settings and stats have been cleared.</p>"
+    "<p>Device is restarting — reconnect to <b>FlightRadarCYD_Setup</b> to reconfigure.</p>"
+    "</body></html>");
+  delay(2000);
+  ESP.restart();
+}
+
 static void fcHandleNoChange() {
   portalServer->send(200, "text/html",
     "<html><head><meta charset='UTF-8'>"
@@ -511,6 +548,7 @@ void fcInitPortal() {
   portalServer->on("/",         fcHandleRoot);
   portalServer->on("/save",     HTTP_POST, fcHandleSave);
   portalServer->on("/nochange", HTTP_POST, fcHandleNoChange);
+  portalServer->on("/reset",    HTTP_POST, fcHandleReset);
   portalServer->onNotFound(fcHandleRoot);
   portalServer->begin();
   portalDone = false;
