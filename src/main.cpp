@@ -675,7 +675,7 @@ static void drawListRow(int rowIdx, int dataIdx, bool selected) {
   const FlightData &f = fc_flights[dataIdx];
   int ry = CONTENT_Y + 14 + rowIdx * LIST_ROW_H;
 
-  uint16_t bg  = selected ? COL_SELECTED : (rowIdx % 2 == 0 ? 0x0000 : 0x0841);
+  uint16_t bg  = selected ? COL_SELECTED : (rowIdx % 2 == 0 ? 0x0000 : 0x2104);
   uint16_t col = acColor(f);
 
   gfx->fillRect(0, ry, 320, LIST_ROW_H, bg);
