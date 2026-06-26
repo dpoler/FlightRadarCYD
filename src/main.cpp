@@ -106,12 +106,12 @@ static unsigned long lastTouchTime = 0;
 // ---------------------------------------------------------------------------
 // Colours
 // ---------------------------------------------------------------------------
-#define COL_HEADER_BG  0x0841   // very dark gray
-#define COL_FOOTER_BG  0x0841
+#define COL_HEADER_BG  0x2104   // dark gray — visible above black content
+#define COL_FOOTER_BG  0x2104
 #define COL_RADAR_BG   0x0020   // very dark green tint
-#define COL_RING       0x0200   // dim green ring
-#define COL_RING_LABEL 0x0380   // slightly brighter
-#define COL_GRID       0x0100   // faint green grid
+#define COL_RING       0x03E0   // green outer ring
+#define COL_RING_LABEL 0x0380   // slightly dimmer ring labels
+#define COL_GRID       0x0200   // faint green grid / chart lines
 #define COL_USER       0xFFFF   // white user "+"
 #define COL_AC_HIGH    0x07FF   // cyan — airborne > 10 000 ft
 #define COL_AC_LOW     0xFFE0   // yellow — airborne ≤ 10 000 ft
@@ -266,10 +266,10 @@ static void drawHeader() {
 static void drawFooter() {
   int fy = 240 - FOOTER_H;
   gfx->fillRect(0, fy, 320, FOOTER_H, COL_FOOTER_BG);
-  gfx->drawFastHLine(0, fy, 320, 0x2104);
-  gfx->drawFastVLine(95,  fy, FOOTER_H, 0x2104);
-  gfx->drawFastVLine(190, fy, FOOTER_H, 0x2104);
-  gfx->drawFastVLine(285, fy, FOOTER_H, 0x2104);
+  gfx->drawFastHLine(0, fy, 320, 0x4208);
+  gfx->drawFastVLine(95,  fy, FOOTER_H, 0x4208);
+  gfx->drawFastVLine(190, fy, FOOTER_H, 0x4208);
+  gfx->drawFastVLine(285, fy, FOOTER_H, 0x4208);
 
   gfx->setTextSize(1);
 
@@ -517,7 +517,7 @@ static void drawStats() {
 
   // Two-panel split: left=counts (~1/4), right=chart (~3/4)
   const int DIV_X = 88;
-  gfx->drawFastVLine(DIV_X, CONTENT_Y + 15, 91, 0x2104);
+  gfx->drawFastVLine(DIV_X, CONTENT_Y + 15, 91, 0x4208);
 
   // Left panel: Current / Peak / Unique / Updates
   {
@@ -869,8 +869,8 @@ static void drawConfBtn(int x, int y, int w, int h,
 // Category filter button: colour-coded, bright when shown, dim when hidden.
 static void drawFilterBtn(int x, int y, int idx, bool shown) {
   uint16_t ac  = FILTER_COLORS[idx];
-  uint16_t border = shown ? ac         : (uint16_t)0x2104;
-  uint16_t text   = shown ? ac         : (uint16_t)0x2104;
+  uint16_t border = shown ? ac         : (uint16_t)0x4208;
+  uint16_t text   = shown ? ac         : (uint16_t)0x4208;
   uint16_t fill   = shown ? (uint16_t)0x0841 : (uint16_t)0x0000;
   gfx->fillRect(x, y, CONF_FLT_BTN_W, CONF_ROW_H, fill);
   gfx->drawRect(x, y, CONF_FLT_BTN_W, CONF_ROW_H, border);
@@ -957,7 +957,7 @@ static void drawConf() {
 
   // Title bar — asterisk indicates unsaved changes
   int titleDivY = CONF_Y + 19;
-  gfx->fillRect(CONF_X + 1, CONF_Y + 1, CONF_W - 2, 18, 0x1082);
+  gfx->fillRect(CONF_X + 1, CONF_Y + 1, CONF_W - 2, 18, 0x2104);
   gfx->drawFastHLine(CONF_X, titleDivY, CONF_W, COL_TITLE);
   gfx->setTextColor(COL_TITLE);
   gfx->setTextSize(1);
